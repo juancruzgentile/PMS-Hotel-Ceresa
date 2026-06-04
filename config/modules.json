@@ -1,0 +1,16 @@
+{
+  "rooms": true,
+  "housekeeping": true,
+  "maintenance": true,
+  "kitchen": false,
+  "sala": false,
+  "laundry": false,
+  "inventory": false,
+  "accounting": false,
+  "clients": false,
+  "transport": false,
+  "locks": false,
+  "lights": false,
+  "air_conditioning": false,
+  "broken_module": false
+}
