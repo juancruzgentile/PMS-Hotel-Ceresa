@@ -2,6 +2,7 @@
   "rooms": true,
   "housekeeping": true,
   "maintenance": true,
+  "users": true,
   "kitchen": false,
   "sala": false,
   "laundry": false,

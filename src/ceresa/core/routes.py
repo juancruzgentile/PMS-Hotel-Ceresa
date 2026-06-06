@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 
 from ceresa.core.module_loader import get_modules_status
-from ceresa.core.settings import APP_NAME, APP_VERSION
+from ceresa.core.settings import APP_NAME, APP_VERSION, HOTEL_CONFIG
 
 
 router = APIRouter(prefix="/system", tags=["System"])
@@ -28,3 +28,13 @@ def system_modules() -> list[dict]:
     Returns all configured modules and their current status.
     """
     return get_modules_status()
+
+
+@router.get("/hotel")
+def system_hotel() -> dict:
+    """
+    Returns basic hotel configuration.
+
+    This endpoint helps Ceresa adapt to different hotel installations.
+    """
+    return HOTEL_CONFIG

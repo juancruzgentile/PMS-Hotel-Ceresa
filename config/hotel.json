@@ -1,0 +1,17 @@
+{
+  "hotel_name": "Hotel Demo Ceresa",
+  "hotel_category": "5 stars",
+  "country": "Italy",
+  "city": "Torre Pali",
+  "timezone": "Europe/Rome",
+  "currency": "EUR",
+  "default_language": "es",
+  "floors": 3,
+  "has_restaurant": true,
+  "has_transport": false,
+  "has_pool": false,
+  "has_spa": false,
+  "has_digital_locks": false,
+  "has_smart_lights": false,
+  "has_smart_air_conditioning": false
+}

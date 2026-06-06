@@ -10,6 +10,7 @@ AVAILABLE_ROUTERS: dict[str, str] = {
     "rooms": "ceresa.rooms.routes:router",
     "housekeeping": "ceresa.housekeeping.routes:router",
     "maintenance": "ceresa.maintenance.routes:router",
+    "users": "ceresa.users.routes:router",
     "broken_module": "ceresa.broken_module.routes:router",
 }
 
