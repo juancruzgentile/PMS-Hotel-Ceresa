@@ -3,7 +3,7 @@
   "housekeeping": true,
   "maintenance": true,
   "users": true,
-  "kitchen": false,
+  "kitchen": true,
   "sala": false,
   "laundry": false,
   "inventory": false,
@@ -13,5 +13,7 @@
   "locks": false,
   "lights": false,
   "air_conditioning": false,
+  "reception": true,
+  "bar": true,
   "broken_module": false
 }

@@ -66,6 +66,19 @@ MODULE_DEFINITIONS = {
     "users": {
         "description": "Users, departments and staff hierarchy module.",
 },
+    "reception": {
+        "description": "Reception, check-in, check-out and guest coordination module.",
+},
+    "kitchen": {
+        "description": "Kitchen, meals, allergies and food preparation module.",
+},
+    "bar": {
+        "description": "Bar, drinks, coffee service and beverage stock module.",
+},
+    "beach": {
+        "description": "Beach services, umbrellas, sunbeds and guest beach reservations module.",
+},
+
     "broken_module": {
         "description": "Intentional broken module used to test module isolation.",
     },
@@ -76,7 +89,6 @@ DEFAULT_MODULES_CONFIG = {
     "rooms": True,
     "housekeeping": True,
     "maintenance": True,
-    "kitchen": False,
     "sala": False,
     "laundry": False,
     "inventory": False,
@@ -88,6 +100,10 @@ DEFAULT_MODULES_CONFIG = {
     "air_conditioning": False,
     "users": True,
     "broken_module": False,
+    "reception": True,
+    "kitchen": True,
+    "bar": True,
+    "beach": True,
 }
 
 
