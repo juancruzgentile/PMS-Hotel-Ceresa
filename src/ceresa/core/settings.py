@@ -95,6 +95,15 @@ MODULE_DEFINITIONS = {
 },  
     "leisure": {
         "description": "Leisure, entertainment, events and guest recreation module.",
+},  
+    "guests": {
+        "description": "Guests, guest profiles, stay data and hotel customer information module.",
+},
+    "reservations": {
+        "description": "Reservations, bookings, stays and room assignment module.",
+},  
+    "billing": {
+        "description": "Billing, payments, guest charges and check-out balances module.",
 },
     "broken_module": {
         "description": "Intentional broken module used to test module isolation.",
@@ -125,6 +134,10 @@ DEFAULT_MODULES_CONFIG = {
     "security": True,
     "dining_room": True,
     "leisure": True,
+    "guests": True,
+    "billing": True,
+    "reservations": True,
+    
 }
 
 

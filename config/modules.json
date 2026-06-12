@@ -19,5 +19,8 @@
   "tourism": true,
   "security": true,
   "leisure": true,
+  "guests": true,
+  "reservations": true,
+  "billing": true,
   "broken_module": false
 }
