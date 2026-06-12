@@ -77,8 +77,25 @@ MODULE_DEFINITIONS = {
 },
     "beach": {
         "description": "Beach services, umbrellas, sunbeds and guest beach reservations module.",
+},  
+    "transport": {
+        "description": "Guest transport, transfers, drivers and GPS coordination module.",
 },
-
+    "tourism": {
+        "description": "Tourism, excursions, guest activities and external reservation module.",
+},
+    "security": {
+        "description": "Security, incidents, rounds and internal alerts module.",
+},
+    "dining_room": {
+        "description": "Dining room, waiters, table service and guest orders module.",
+},  
+    "laundry": {
+        "description": "Laundry, linen, towels, uniforms and washing cycles module.",
+},  
+    "leisure": {
+        "description": "Leisure, entertainment, events and guest recreation module.",
+},
     "broken_module": {
         "description": "Intentional broken module used to test module isolation.",
     },
@@ -90,11 +107,11 @@ DEFAULT_MODULES_CONFIG = {
     "housekeeping": True,
     "maintenance": True,
     "sala": False,
-    "laundry": False,
+    "laundry": True,
     "inventory": False,
     "accounting": False,
     "clients": False,
-    "transport": False,
+    "transport": True,
     "locks": False,
     "lights": False,
     "air_conditioning": False,
@@ -104,6 +121,10 @@ DEFAULT_MODULES_CONFIG = {
     "kitchen": True,
     "bar": True,
     "beach": True,
+    "tourism": True,
+    "security": True,
+    "dining_room": True,
+    "leisure": True,
 }
 
 
