@@ -6,7 +6,7 @@
   "kitchen": true,
   "sala": false,
   "laundry": true,
-  "inventory": false,
+  "inventory": true,
   "accounting": false,
   "clients": false,
   "transport": true,

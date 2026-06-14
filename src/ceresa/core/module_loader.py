@@ -25,6 +25,7 @@ AVAILABLE_ROUTERS: dict[str, str] = {
     "guests": "ceresa.guests.routes:router",
     "reservations": "ceresa.reservations.routes:router",
     "billing": "ceresa.billing.routes:router",
+    "inventory": "ceresa.inventory.routes:router",
 
 }
 

@@ -105,6 +105,9 @@ MODULE_DEFINITIONS = {
     "billing": {
         "description": "Billing, payments, guest charges and check-out balances module.",
 },
+    "inventory": {
+        "description": "Shared inventory, stock movements and sector supplies module.",
+},
     "broken_module": {
         "description": "Intentional broken module used to test module isolation.",
     },
@@ -117,7 +120,7 @@ DEFAULT_MODULES_CONFIG = {
     "maintenance": True,
     "sala": False,
     "laundry": True,
-    "inventory": False,
+    "inventory": True,
     "accounting": False,
     "clients": False,
     "transport": True,
