@@ -108,6 +108,9 @@ MODULE_DEFINITIONS = {
     "inventory": {
         "description": "Shared inventory, stock movements and sector supplies module.",
 },
+    "accounting": {
+        "description": "Hotel accounting, income, expenses and financial reporting module.",
+},
     "broken_module": {
         "description": "Intentional broken module used to test module isolation.",
     },
@@ -140,6 +143,7 @@ DEFAULT_MODULES_CONFIG = {
     "guests": True,
     "billing": True,
     "reservations": True,
+    "accounting": True,
     
 }
 

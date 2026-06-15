@@ -105,3 +105,123 @@ CREATE TABLE IF NOT EXISTS users (
         )
     )
 );
+
+CREATE TABLE IF NOT EXISTS guests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+    guest_code TEXT NOT NULL UNIQUE,
+    first_name TEXT NOT NULL,
+    last_name TEXT NOT NULL,
+
+    email TEXT,
+    phone TEXT,
+    nationality TEXT,
+    notes TEXT,
+
+    is_active INTEGER NOT NULL DEFAULT 1,
+
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CHECK (is_active IN (0, 1))
+);
+
+CREATE TABLE IF NOT EXISTS reservations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+    reservation_code TEXT NOT NULL UNIQUE,
+    guest_id INTEGER NOT NULL,
+    room_id INTEGER NOT NULL,
+
+    check_in_date TEXT NOT NULL,
+    check_out_date TEXT NOT NULL,
+
+    status TEXT NOT NULL DEFAULT 'pending',
+
+    adults INTEGER NOT NULL DEFAULT 1,
+    children INTEGER NOT NULL DEFAULT 0,
+    notes TEXT,
+
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (guest_id)
+        REFERENCES guests(id)
+        ON DELETE RESTRICT,
+
+    FOREIGN KEY (room_id)
+        REFERENCES rooms(id)
+        ON DELETE RESTRICT,
+
+    CHECK (
+        status IN (
+            'pending',
+            'confirmed',
+            'checked_in',
+            'checked_out',
+            'cancelled'
+        )
+    ),
+
+    CHECK (adults >= 1),
+    CHECK (children >= 0),
+    CHECK (check_out_date > check_in_date)
+);
+CREATE TABLE IF NOT EXISTS billing_accounts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+    reservation_id INTEGER NOT NULL UNIQUE,
+    status TEXT NOT NULL DEFAULT 'open',
+    notes TEXT,
+
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (reservation_id)
+        REFERENCES reservations(id)
+        ON DELETE RESTRICT,
+
+    CHECK (
+        status IN (
+            'open',
+            'closed',
+            'cancelled'
+        )
+    )
+);
+
+
+CREATE TABLE IF NOT EXISTS billing_charges (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+    billing_account_id INTEGER NOT NULL,
+    source_module TEXT NOT NULL,
+    description TEXT NOT NULL,
+    amount_cents INTEGER NOT NULL,
+
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (billing_account_id)
+        REFERENCES billing_accounts(id)
+        ON DELETE RESTRICT,
+
+    CHECK (amount_cents > 0)
+);
+
+
+CREATE TABLE IF NOT EXISTS billing_payments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+    billing_account_id INTEGER NOT NULL,
+    payment_method TEXT NOT NULL,
+    amount_cents INTEGER NOT NULL,
+    reference TEXT,
+
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (billing_account_id)
+        REFERENCES billing_accounts(id)
+        ON DELETE RESTRICT,
+
+    CHECK (amount_cents > 0)
+);

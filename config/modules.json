@@ -7,7 +7,7 @@
   "sala": false,
   "laundry": true,
   "inventory": true,
-  "accounting": false,
+  "accounting": true,
   "clients": false,
   "transport": true,
   "locks": false,
