@@ -1,4 +1,82 @@
+from sqlite3 import Connection
+
 from ceresa.db import get_connection
+
+
+def get_room_by_id_with_connection(
+    connection: Connection,
+    room_id: int,
+) -> dict | None:
+    """
+    Returns one room using an existing transaction.
+    """
+    row = connection.execute(
+        """
+        SELECT
+            id,
+            room_number,
+            floor,
+            room_type,
+            room_status,
+            cleaning_status,
+            maintenance_status,
+            has_jacuzzi,
+            has_balcony,
+            notes,
+            created_at,
+            updated_at
+        FROM rooms
+        WHERE id = ?
+        """,
+        (room_id,),
+    ).fetchone()
+
+    if row is None:
+        return None
+
+    return dict(row)
+
+
+def update_room_operational_status_with_connection(
+    connection: Connection,
+    room_id: int,
+    room_status: str,
+    cleaning_status: str | None = None,
+) -> None:
+    """
+    Updates room operational status inside an existing transaction.
+    """
+    if cleaning_status is None:
+        connection.execute(
+            """
+            UPDATE rooms
+            SET
+                room_status = ?,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            """,
+            (
+                room_status,
+                room_id,
+            ),
+        )
+        return
+
+    connection.execute(
+        """
+        UPDATE rooms
+        SET
+            room_status = ?,
+            cleaning_status = ?,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+        """,
+        (
+            room_status,
+            cleaning_status,
+            room_id,
+        ),
+    )
 
 
 def create_room(room_data: dict) -> int:

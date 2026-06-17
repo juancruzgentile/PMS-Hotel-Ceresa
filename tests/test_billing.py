@@ -1,3 +1,6 @@
+from ceresa.db import get_connection
+
+
 def test_billing_status(client):
     response = client.get("/billing/status")
 
@@ -94,7 +97,7 @@ def test_create_billing_account(client, reset_test_data):
         },
     )
 
-    assert response.status_code == 200
+    assert response.status_code == 201
     assert (
         response.json()["message"]
         == "Billing account created successfully"
@@ -128,7 +131,7 @@ def test_duplicate_billing_account_is_rejected(
         json=payload,
     )
 
-    assert first_response.status_code == 200
+    assert first_response.status_code == 201
     assert second_response.status_code == 409
 
 
@@ -180,9 +183,9 @@ def test_billing_account_calculates_balance(
         },
     )
 
-    assert first_charge.status_code == 200
-    assert second_charge.status_code == 200
-    assert payment.status_code == 200
+    assert first_charge.status_code == 201
+    assert second_charge.status_code == 201
+    assert payment.status_code == 201
 
     response = client.get(
         f"/billing/accounts/{account_id}"
@@ -229,3 +232,143 @@ def test_charge_requires_valid_account(
     )
 
     assert response.status_code == 404
+
+
+def test_payment_requires_valid_account(
+    client,
+    reset_test_data,
+):
+    response = client.post(
+        "/billing/accounts/999999/payments",
+        json={
+            "payment_method": "card",
+            "amount_cents": 1000,
+            "reference": "INVALID-PAYMENT",
+        },
+    )
+
+    assert response.status_code == 404
+
+
+def test_billing_inputs_are_normalized(
+    client,
+    reset_test_data,
+):
+    reservation_id = create_reservation_for_billing(
+        client,
+        "004",
+    )
+    account_response = client.post(
+        "/billing/accounts",
+        json={
+            "reservation_id": reservation_id,
+            "notes": None,
+        },
+    )
+    account_id = account_response.json()["billing_account_id"]
+
+    charge_response = client.post(
+        f"/billing/accounts/{account_id}/charges",
+        json={
+            "source_module": "  BAR  ",
+            "description": "  Pool drinks  ",
+            "amount_cents": 1800,
+        },
+    )
+    payment_response = client.post(
+        f"/billing/accounts/{account_id}/payments",
+        json={
+            "payment_method": "  CARD  ",
+            "amount_cents": 1800,
+            "reference": "  CARD-004  ",
+        },
+    )
+
+    assert charge_response.status_code == 201
+    assert payment_response.status_code == 201
+
+    response = client.get(f"/billing/accounts/{account_id}")
+    data = response.json()
+
+    assert data["charges"][0]["source_module"] == "bar"
+    assert data["charges"][0]["description"] == "Pool drinks"
+    assert data["payments"][0]["payment_method"] == "card"
+    assert data["payments"][0]["reference"] == "CARD-004"
+
+
+def test_payment_method_must_be_supported(
+    client,
+    reset_test_data,
+):
+    reservation_id = create_reservation_for_billing(
+        client,
+        "005",
+    )
+    account_response = client.post(
+        "/billing/accounts",
+        json={
+            "reservation_id": reservation_id,
+            "notes": None,
+        },
+    )
+    account_id = account_response.json()["billing_account_id"]
+
+    response = client.post(
+        f"/billing/accounts/{account_id}/payments",
+        json={
+            "payment_method": "crypto",
+            "amount_cents": 2500,
+            "reference": None,
+        },
+    )
+
+    assert response.status_code == 422
+
+
+def test_closed_billing_account_rejects_movements(
+    client,
+    reset_test_data,
+):
+    reservation_id = create_reservation_for_billing(
+        client,
+        "006",
+    )
+    account_response = client.post(
+        "/billing/accounts",
+        json={
+            "reservation_id": reservation_id,
+            "notes": None,
+        },
+    )
+    account_id = account_response.json()["billing_account_id"]
+
+    with get_connection() as connection:
+        connection.execute(
+            """
+            UPDATE billing_accounts
+            SET status = 'closed'
+            WHERE id = ?
+            """,
+            (account_id,),
+        )
+        connection.commit()
+
+    charge_response = client.post(
+        f"/billing/accounts/{account_id}/charges",
+        json={
+            "source_module": "bar",
+            "description": "Late minibar charge",
+            "amount_cents": 900,
+        },
+    )
+    payment_response = client.post(
+        f"/billing/accounts/{account_id}/payments",
+        json={
+            "payment_method": "cash",
+            "amount_cents": 900,
+            "reference": None,
+        },
+    )
+
+    assert charge_response.status_code == 409
+    assert payment_response.status_code == 409

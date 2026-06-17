@@ -27,32 +27,65 @@ MODULE_DEFINITIONS = {
     "rooms": {
         "description": "Room management module.",
     },
+    "guests": {
+        "description": "Guests, guest profiles, stay data and hotel customer information module.",
+    },
+    "reservations": {
+        "description": "Reservations, bookings, stays and room assignment module.",
+    },
+    "reception": {
+        "description": "Reception, check-in, check-out and guest coordination module.",
+    },
+    "billing": {
+        "description": "Billing, payments, guest charges and check-out balances module.",
+    },
     "housekeeping": {
         "description": "Housekeeping and cleaning workflow module.",
     },
     "maintenance": {
         "description": "Maintenance workflow module.",
     },
+    "users": {
+        "description": "Users, departments and staff hierarchy module.",
+    },
     "kitchen": {
-        "description": "Kitchen and meal planning module. Future module.",
+        "description": "Kitchen, meals, allergies and food preparation module.",
+    },
+    "bar": {
+        "description": "Bar, drinks, coffee service and beverage stock module.",
+    },
+    "dining_room": {
+        "description": "Dining room, waiters, table service and guest orders module.",
+    },
+    "beach": {
+        "description": "Beach services, umbrellas, sunbeds and guest beach reservations module.",
+    },
+    "transport": {
+        "description": "Guest transport, transfers, drivers and GPS coordination module.",
+    },
+    "tourism": {
+        "description": "Tourism, excursions, guest activities and external reservation module.",
+    },
+    "security": {
+        "description": "Security, incidents, rounds and internal alerts module.",
+    },
+    "laundry": {
+        "description": "Laundry, linen, towels, uniforms and washing cycles module.",
+    },
+    "leisure": {
+        "description": "Leisure, entertainment, events and guest recreation module.",
+    },
+    "inventory": {
+        "description": "Shared inventory, stock movements and sector supplies module.",
+    },
+    "accounting": {
+        "description": "Hotel accounting, income, expenses and financial reporting module.",
     },
     "sala": {
         "description": "Dining room and waiter service module. Future module.",
     },
-    "laundry": {
-        "description": "Laundry stock and workflow module. Future module.",
-    },
-    "inventory": {
-        "description": "Inventory and stock control module. Future module.",
-    },
-    "accounting": {
-        "description": "Income, expenses and accounting module. Future module.",
-    },
     "clients": {
         "description": "Guest/client application module. Future module.",
-    },
-    "transport": {
-        "description": "Guest transport, driver assignment and GPS coordination module. Future module.",
     },
     "locks": {
         "description": "Digital locks and key card integration module. Future module.",
@@ -63,54 +96,6 @@ MODULE_DEFINITIONS = {
     "air_conditioning": {
         "description": "Air conditioning control module. Future module.",
     },
-    "users": {
-        "description": "Users, departments and staff hierarchy module.",
-},
-    "reception": {
-        "description": "Reception, check-in, check-out and guest coordination module.",
-},
-    "kitchen": {
-        "description": "Kitchen, meals, allergies and food preparation module.",
-},
-    "bar": {
-        "description": "Bar, drinks, coffee service and beverage stock module.",
-},
-    "beach": {
-        "description": "Beach services, umbrellas, sunbeds and guest beach reservations module.",
-},  
-    "transport": {
-        "description": "Guest transport, transfers, drivers and GPS coordination module.",
-},
-    "tourism": {
-        "description": "Tourism, excursions, guest activities and external reservation module.",
-},
-    "security": {
-        "description": "Security, incidents, rounds and internal alerts module.",
-},
-    "dining_room": {
-        "description": "Dining room, waiters, table service and guest orders module.",
-},  
-    "laundry": {
-        "description": "Laundry, linen, towels, uniforms and washing cycles module.",
-},  
-    "leisure": {
-        "description": "Leisure, entertainment, events and guest recreation module.",
-},  
-    "guests": {
-        "description": "Guests, guest profiles, stay data and hotel customer information module.",
-},
-    "reservations": {
-        "description": "Reservations, bookings, stays and room assignment module.",
-},  
-    "billing": {
-        "description": "Billing, payments, guest charges and check-out balances module.",
-},
-    "inventory": {
-        "description": "Shared inventory, stock movements and sector supplies module.",
-},
-    "accounting": {
-        "description": "Hotel accounting, income, expenses and financial reporting module.",
-},
     "broken_module": {
         "description": "Intentional broken module used to test module isolation.",
     },
@@ -119,32 +104,30 @@ MODULE_DEFINITIONS = {
 
 DEFAULT_MODULES_CONFIG = {
     "rooms": True,
+    "guests": True,
+    "reservations": True,
+    "reception": True,
+    "billing": True,
     "housekeeping": True,
     "maintenance": True,
-    "sala": False,
-    "laundry": True,
-    "inventory": True,
-    "accounting": False,
-    "clients": False,
+    "users": True,
+    "kitchen": True,
+    "bar": True,
+    "dining_room": True,
+    "beach": True,
     "transport": True,
+    "tourism": True,
+    "security": True,
+    "laundry": True,
+    "leisure": True,
+    "inventory": True,
+    "accounting": True,
+    "sala": False,
+    "clients": False,
     "locks": False,
     "lights": False,
     "air_conditioning": False,
-    "users": True,
     "broken_module": False,
-    "reception": True,
-    "kitchen": True,
-    "bar": True,
-    "beach": True,
-    "tourism": True,
-    "security": True,
-    "dining_room": True,
-    "leisure": True,
-    "guests": True,
-    "billing": True,
-    "reservations": True,
-    "accounting": True,
-    
 }
 
 

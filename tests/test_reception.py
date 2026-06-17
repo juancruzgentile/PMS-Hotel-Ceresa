@@ -1,3 +1,251 @@
+from ceresa.billing import repository as billing_repository
+from ceresa.db import get_connection
+from ceresa.reception import service
+
+
+def create_reception_guest(client, suffix: str) -> int:
+    response = client.post(
+        "/guests",
+        json={
+            "guest_code": f"TEST-REC-GUEST-{suffix}",
+            "first_name": "Reception",
+            "last_name": "Guest",
+            "email": None,
+            "phone": None,
+            "nationality": None,
+            "notes": None,
+        },
+    )
+
+    assert response.status_code == 200
+    return response.json()["guest_id"]
+
+
+def create_reception_room(client, suffix: str) -> int:
+    response = client.post(
+        "/rooms",
+        json={
+            "room_number": f"REC-{suffix[-3:]}",
+            "floor": 1,
+            "room_type": "Reception Test",
+            "has_jacuzzi": False,
+            "has_balcony": False,
+            "notes": None,
+        },
+    )
+
+    assert response.status_code == 200
+    return response.json()["room_id"]
+
+
+def create_reception_reservation(
+    client,
+    suffix: str,
+    check_in_date: str = "2027-04-10",
+    check_out_date: str = "2027-04-15",
+    status: str = "confirmed",
+) -> int:
+    guest_id = create_reception_guest(client, suffix)
+    room_id = create_reception_room(client, suffix)
+
+    response = client.post(
+        "/reservations",
+        json={
+            "reservation_code": f"TEST-REC-RES-{suffix}",
+            "guest_id": guest_id,
+            "room_id": room_id,
+            "check_in_date": check_in_date,
+            "check_out_date": check_out_date,
+            "status": status,
+            "adults": 2,
+            "children": 0,
+            "notes": "Reservation created for reception tests.",
+        },
+    )
+
+    assert response.status_code == 200
+    return response.json()["reservation_id"]
+
+
+def cancel_reservation(reservation_id: int) -> None:
+    with get_connection() as connection:
+        connection.execute(
+            """
+            UPDATE reservations
+            SET status = 'cancelled'
+            WHERE id = ?
+            """,
+            (reservation_id,),
+        )
+        connection.commit()
+
+
+def set_reservation_status(
+    reservation_id: int,
+    status: str,
+) -> None:
+    with get_connection() as connection:
+        connection.execute(
+            """
+            UPDATE reservations
+            SET status = ?
+            WHERE id = ?
+            """,
+            (
+                status,
+                reservation_id,
+            ),
+        )
+        connection.commit()
+
+
+def set_room_state(
+    room_id: int,
+    room_status: str | None = None,
+    cleaning_status: str | None = None,
+    maintenance_status: str | None = None,
+) -> None:
+    updates = []
+    values = []
+
+    if room_status is not None:
+        updates.append("room_status = ?")
+        values.append(room_status)
+
+    if cleaning_status is not None:
+        updates.append("cleaning_status = ?")
+        values.append(cleaning_status)
+
+    if maintenance_status is not None:
+        updates.append("maintenance_status = ?")
+        values.append(maintenance_status)
+
+    values.append(room_id)
+
+    with get_connection() as connection:
+        connection.execute(
+            f"""
+            UPDATE rooms
+            SET {", ".join(updates)}
+            WHERE id = ?
+            """,
+            tuple(values),
+        )
+        connection.commit()
+
+
+def get_reservation_state(reservation_id: int) -> dict:
+    with get_connection() as connection:
+        row = connection.execute(
+            """
+            SELECT id, room_id, status
+            FROM reservations
+            WHERE id = ?
+            """,
+            (reservation_id,),
+        ).fetchone()
+
+    return dict(row)
+
+
+def get_room_state(room_id: int) -> dict:
+    with get_connection() as connection:
+        row = connection.execute(
+            """
+            SELECT
+                id,
+                room_status,
+                cleaning_status,
+                maintenance_status
+            FROM rooms
+            WHERE id = ?
+            """,
+            (room_id,),
+        ).fetchone()
+
+    return dict(row)
+
+
+def get_billing_account_state(reservation_id: int) -> dict | None:
+    with get_connection() as connection:
+        row = connection.execute(
+            """
+            SELECT id, reservation_id, status
+            FROM billing_accounts
+            WHERE reservation_id = ?
+            """,
+            (reservation_id,),
+        ).fetchone()
+
+    return dict(row) if row else None
+
+
+def create_billing_account_for_reservation(
+    client,
+    reservation_id: int,
+) -> int:
+    response = client.post(
+        "/billing/accounts",
+        json={
+            "reservation_id": reservation_id,
+            "notes": None,
+        },
+    )
+
+    assert response.status_code == 201
+    return response.json()["billing_account_id"]
+
+
+def add_billing_charge(
+    client,
+    account_id: int,
+    amount_cents: int,
+) -> None:
+    response = client.post(
+        f"/billing/accounts/{account_id}/charges",
+        json={
+            "source_module": "rooms",
+            "description": "Reception test charge",
+            "amount_cents": amount_cents,
+        },
+    )
+
+    assert response.status_code == 201
+
+
+def add_billing_payment(
+    client,
+    account_id: int,
+    amount_cents: int,
+) -> None:
+    response = client.post(
+        f"/billing/accounts/{account_id}/payments",
+        json={
+            "payment_method": "card",
+            "amount_cents": amount_cents,
+            "reference": "RECEPTION-TEST",
+        },
+    )
+
+    assert response.status_code == 201
+
+
+def disable_billing(monkeypatch) -> None:
+    original_is_module_enabled = service.module_loader.is_module_enabled
+
+    def fake_is_module_enabled(module_name: str) -> bool:
+        if module_name == "billing":
+            return False
+
+        return original_is_module_enabled(module_name)
+
+    monkeypatch.setattr(
+        service.module_loader,
+        "is_module_enabled",
+        fake_is_module_enabled,
+    )
+
+
 def test_reception_status(client):
     response = client.get("/reception/status")
 
@@ -24,3 +272,672 @@ def test_reception_module_is_loaded(client):
     assert reception_module["implemented"] is True
     assert reception_module["loaded"] is True
     assert reception_module["error"] is None
+
+
+def test_arrivals_returns_empty_list_when_no_reservations(
+    client,
+    reset_test_data,
+):
+    response = client.get(
+        "/reception/arrivals",
+        params={"arrival_date": "2027-04-10"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+def test_arrivals_includes_confirmed_reservation(
+    client,
+    reset_test_data,
+):
+    reservation_id = create_reception_reservation(
+        client,
+        "ARR-001",
+        check_in_date="2027-04-10",
+        check_out_date="2027-04-15",
+    )
+
+    response = client.get(
+        "/reception/arrivals",
+        params={"arrival_date": "2027-04-10"},
+    )
+
+    assert response.status_code == 200
+
+    arrivals = response.json()
+
+    assert len(arrivals) == 1
+    assert arrivals[0]["id"] == reservation_id
+    assert arrivals[0]["reservation_code"] == "TEST-REC-RES-ARR-001"
+    assert arrivals[0]["guest_first_name"] == "Reception"
+    assert arrivals[0]["room_number"] == "REC-001"
+
+
+def test_arrivals_excludes_cancelled_reservation(
+    client,
+    reset_test_data,
+):
+    reservation_id = create_reception_reservation(
+        client,
+        "ARR-002",
+        check_in_date="2027-04-10",
+        check_out_date="2027-04-15",
+    )
+    cancel_reservation(reservation_id)
+
+    response = client.get(
+        "/reception/arrivals",
+        params={"arrival_date": "2027-04-10"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+def test_departures_returns_empty_list_when_no_reservations(
+    client,
+    reset_test_data,
+):
+    response = client.get(
+        "/reception/departures",
+        params={"departure_date": "2027-04-15"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+def test_departures_includes_valid_reservation(
+    client,
+    reset_test_data,
+):
+    reservation_id = create_reception_reservation(
+        client,
+        "DEP-001",
+        check_in_date="2027-04-10",
+        check_out_date="2027-04-15",
+    )
+
+    response = client.get(
+        "/reception/departures",
+        params={"departure_date": "2027-04-15"},
+    )
+
+    assert response.status_code == 200
+
+    departures = response.json()
+
+    assert len(departures) == 1
+    assert departures[0]["id"] == reservation_id
+    assert departures[0]["reservation_code"] == "TEST-REC-RES-DEP-001"
+    assert departures[0]["guest_last_name"] == "Guest"
+    assert departures[0]["room_number"] == "REC-001"
+
+
+def test_reservation_summary_returns_404_for_missing_reservation(
+    client,
+    reset_test_data,
+):
+    response = client.get(
+        "/reception/reservations/999999/summary"
+    )
+
+    assert response.status_code == 404
+
+
+def test_reservation_summary_works_with_billing_enabled_without_account(
+    client,
+    reset_test_data,
+):
+    reservation_id = create_reception_reservation(
+        client,
+        "SUM-001",
+    )
+
+    response = client.get(
+        f"/reception/reservations/{reservation_id}/summary"
+    )
+
+    assert response.status_code == 200
+
+    summary = response.json()
+
+    assert summary["reservation"]["id"] == reservation_id
+    assert summary["billing_enabled"] is True
+    assert summary["billing_account"] is None
+
+
+def test_reservation_summary_includes_billing_account_balance_and_currency(
+    client,
+    reset_test_data,
+):
+    reservation_id = create_reception_reservation(
+        client,
+        "SUM-002",
+    )
+
+    account_response = client.post(
+        "/billing/accounts",
+        json={
+            "reservation_id": reservation_id,
+            "notes": None,
+        },
+    )
+    account_id = account_response.json()["billing_account_id"]
+
+    charge_response = client.post(
+        f"/billing/accounts/{account_id}/charges",
+        json={
+            "source_module": "rooms",
+            "description": "Accommodation",
+            "amount_cents": 20000,
+        },
+    )
+    payment_response = client.post(
+        f"/billing/accounts/{account_id}/payments",
+        json={
+            "payment_method": "card",
+            "amount_cents": 15000,
+            "reference": "REC-SUM-002",
+        },
+    )
+
+    assert account_response.status_code == 201
+    assert charge_response.status_code == 201
+    assert payment_response.status_code == 201
+
+    response = client.get(
+        f"/reception/reservations/{reservation_id}/summary"
+    )
+
+    assert response.status_code == 200
+
+    billing_account = response.json()["billing_account"]
+
+    assert billing_account["id"] == account_id
+    assert billing_account["charges_total_cents"] == 20000
+    assert billing_account["payments_total_cents"] == 15000
+    assert billing_account["balance_cents"] == 5000
+    assert billing_account["currency"] == "EUR"
+    assert len(billing_account["charges"]) == 1
+    assert len(billing_account["payments"]) == 1
+
+
+def test_reservation_summary_works_when_billing_is_disabled(
+    client,
+    reset_test_data,
+    monkeypatch,
+):
+    reservation_id = create_reception_reservation(
+        client,
+        "SUM-003",
+    )
+    original_is_module_enabled = service.module_loader.is_module_enabled
+
+    def fake_is_module_enabled(module_name: str) -> bool:
+        if module_name == "billing":
+            return False
+
+        return original_is_module_enabled(module_name)
+
+    monkeypatch.setattr(
+        service.module_loader,
+        "is_module_enabled",
+        fake_is_module_enabled,
+    )
+
+    response = client.get(
+        f"/reception/reservations/{reservation_id}/summary"
+    )
+
+    assert response.status_code == 200
+
+    summary = response.json()
+
+    assert summary["reservation"]["id"] == reservation_id
+    assert summary["billing_enabled"] is False
+    assert summary["billing_account"] is None
+
+
+def test_optional_billing_error_does_not_break_reception_status(
+    client,
+    reset_test_data,
+    monkeypatch,
+):
+    reservation_id = create_reception_reservation(
+        client,
+        "SUM-004",
+    )
+
+    def fail_get_billing_account_by_reservation_id(
+        reservation_id: int,
+    ) -> dict:
+        raise RuntimeError("billing unavailable")
+
+    monkeypatch.setattr(
+        billing_repository,
+        "get_billing_account_by_reservation_id",
+        fail_get_billing_account_by_reservation_id,
+    )
+
+    summary_response = client.get(
+        f"/reception/reservations/{reservation_id}/summary"
+    )
+    status_response = client.get("/reception/status")
+
+    assert summary_response.status_code == 503
+    assert status_response.status_code == 200
+
+
+def test_check_in_updates_reservation_and_room(
+    client,
+    reset_test_data,
+):
+    reservation_id = create_reception_reservation(client, "CI-001")
+
+    response = client.post(
+        f"/reception/reservations/{reservation_id}/check-in"
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+    reservation = get_reservation_state(reservation_id)
+    room = get_room_state(data["room_id"])
+
+    assert data["reservation_status"] == "checked_in"
+    assert data["room_status"] == "occupied"
+    assert reservation["status"] == "checked_in"
+    assert room["room_status"] == "occupied"
+
+
+def test_check_in_creates_billing_account_when_enabled(
+    client,
+    reset_test_data,
+):
+    reservation_id = create_reception_reservation(client, "CI-002")
+
+    response = client.post(
+        f"/reception/reservations/{reservation_id}/check-in"
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+    account = get_billing_account_state(reservation_id)
+
+    assert data["billing_enabled"] is True
+    assert data["billing_account_id"] == account["id"]
+    assert account["status"] == "open"
+
+
+def test_check_in_reuses_open_billing_account(
+    client,
+    reset_test_data,
+):
+    reservation_id = create_reception_reservation(client, "CI-003")
+    account_id = create_billing_account_for_reservation(
+        client,
+        reservation_id,
+    )
+
+    response = client.post(
+        f"/reception/reservations/{reservation_id}/check-in"
+    )
+
+    assert response.status_code == 200
+    assert response.json()["billing_account_id"] == account_id
+
+
+def test_check_in_works_when_billing_is_disabled(
+    client,
+    reset_test_data,
+    monkeypatch,
+):
+    reservation_id = create_reception_reservation(client, "CI-004")
+    disable_billing(monkeypatch)
+
+    response = client.post(
+        f"/reception/reservations/{reservation_id}/check-in"
+    )
+
+    assert response.status_code == 200
+    assert response.json()["billing_enabled"] is False
+    assert response.json()["billing_account_id"] is None
+    assert get_billing_account_state(reservation_id) is None
+
+
+def test_pending_reservation_cannot_check_in(
+    client,
+    reset_test_data,
+):
+    reservation_id = create_reception_reservation(
+        client,
+        "CI-005",
+        status="pending",
+    )
+
+    response = client.post(
+        f"/reception/reservations/{reservation_id}/check-in"
+    )
+
+    assert response.status_code == 409
+
+
+def test_cancelled_reservation_cannot_check_in(
+    client,
+    reset_test_data,
+):
+    reservation_id = create_reception_reservation(client, "CI-006")
+    cancel_reservation(reservation_id)
+
+    response = client.post(
+        f"/reception/reservations/{reservation_id}/check-in"
+    )
+
+    assert response.status_code == 409
+
+
+def test_checked_in_reservation_cannot_check_in_again(
+    client,
+    reset_test_data,
+):
+    reservation_id = create_reception_reservation(client, "CI-007")
+
+    first_response = client.post(
+        f"/reception/reservations/{reservation_id}/check-in"
+    )
+    second_response = client.post(
+        f"/reception/reservations/{reservation_id}/check-in"
+    )
+
+    assert first_response.status_code == 200
+    assert second_response.status_code == 409
+
+
+def test_dirty_room_blocks_check_in(
+    client,
+    reset_test_data,
+):
+    reservation_id = create_reception_reservation(client, "CI-008")
+    room_id = get_reservation_state(reservation_id)["room_id"]
+    set_room_state(room_id, cleaning_status="dirty")
+
+    response = client.post(
+        f"/reception/reservations/{reservation_id}/check-in"
+    )
+
+    assert response.status_code == 409
+
+
+def test_occupied_room_blocks_check_in(
+    client,
+    reset_test_data,
+):
+    reservation_id = create_reception_reservation(client, "CI-009")
+    room_id = get_reservation_state(reservation_id)["room_id"]
+    set_room_state(room_id, room_status="occupied")
+
+    response = client.post(
+        f"/reception/reservations/{reservation_id}/check-in"
+    )
+
+    assert response.status_code == 409
+
+
+def test_room_with_maintenance_issue_blocks_check_in(
+    client,
+    reset_test_data,
+):
+    reservation_id = create_reception_reservation(client, "CI-010")
+    room_id = get_reservation_state(reservation_id)["room_id"]
+    set_room_state(room_id, maintenance_status="needs_repair")
+
+    response = client.post(
+        f"/reception/reservations/{reservation_id}/check-in"
+    )
+
+    assert response.status_code == 409
+
+
+def test_billing_operational_failure_rolls_back_check_in(
+    client,
+    reset_test_data,
+    monkeypatch,
+):
+    reservation_id = create_reception_reservation(client, "CI-011")
+    room_id = get_reservation_state(reservation_id)["room_id"]
+
+    def fail_create_account(
+        connection,
+        reservation_id: int,
+        notes: str | None,
+    ) -> int:
+        raise RuntimeError("billing write failed")
+
+    monkeypatch.setattr(
+        billing_repository,
+        "create_billing_account_with_connection",
+        fail_create_account,
+    )
+
+    response = client.post(
+        f"/reception/reservations/{reservation_id}/check-in"
+    )
+
+    assert response.status_code == 503
+    assert get_reservation_state(reservation_id)["status"] == "confirmed"
+    assert get_room_state(room_id)["room_status"] == "available"
+    assert get_billing_account_state(reservation_id) is None
+
+
+def test_check_out_with_zero_balance_closes_account_and_releases_room(
+    client,
+    reset_test_data,
+):
+    reservation_id = create_reception_reservation(client, "CO-001")
+    check_in_response = client.post(
+        f"/reception/reservations/{reservation_id}/check-in"
+    )
+    room_id = check_in_response.json()["room_id"]
+
+    response = client.post(
+        f"/reception/reservations/{reservation_id}/check-out"
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+    reservation = get_reservation_state(reservation_id)
+    room = get_room_state(room_id)
+    account = get_billing_account_state(reservation_id)
+
+    assert data["reservation_status"] == "checked_out"
+    assert data["room_status"] == "available"
+    assert data["cleaning_status"] == "dirty"
+    assert data["billing_account_status"] == "closed"
+    assert reservation["status"] == "checked_out"
+    assert room["room_status"] == "available"
+    assert room["cleaning_status"] == "dirty"
+    assert account["status"] == "closed"
+
+
+def test_check_out_with_positive_balance_is_rejected(
+    client,
+    reset_test_data,
+):
+    reservation_id = create_reception_reservation(client, "CO-002")
+    check_in_response = client.post(
+        f"/reception/reservations/{reservation_id}/check-in"
+    )
+    account_id = check_in_response.json()["billing_account_id"]
+    add_billing_charge(client, account_id, 1000)
+
+    response = client.post(
+        f"/reception/reservations/{reservation_id}/check-out"
+    )
+
+    assert response.status_code == 409
+
+
+def test_check_out_with_negative_balance_is_rejected(
+    client,
+    reset_test_data,
+):
+    reservation_id = create_reception_reservation(client, "CO-003")
+    check_in_response = client.post(
+        f"/reception/reservations/{reservation_id}/check-in"
+    )
+    account_id = check_in_response.json()["billing_account_id"]
+    add_billing_payment(client, account_id, 1000)
+
+    response = client.post(
+        f"/reception/reservations/{reservation_id}/check-out"
+    )
+
+    assert response.status_code == 409
+
+
+def test_check_out_without_billing_account_is_rejected_when_billing_enabled(
+    client,
+    reset_test_data,
+):
+    reservation_id = create_reception_reservation(client, "CO-004")
+    room_id = get_reservation_state(reservation_id)["room_id"]
+    set_reservation_status(reservation_id, "checked_in")
+    set_room_state(room_id, room_status="occupied")
+
+    response = client.post(
+        f"/reception/reservations/{reservation_id}/check-out"
+    )
+
+    assert response.status_code == 409
+
+
+def test_check_out_works_when_billing_is_disabled(
+    client,
+    reset_test_data,
+    monkeypatch,
+):
+    reservation_id = create_reception_reservation(client, "CO-005")
+    room_id = get_reservation_state(reservation_id)["room_id"]
+    set_reservation_status(reservation_id, "checked_in")
+    set_room_state(room_id, room_status="occupied")
+    disable_billing(monkeypatch)
+
+    response = client.post(
+        f"/reception/reservations/{reservation_id}/check-out"
+    )
+
+    assert response.status_code == 200
+    assert response.json()["billing_enabled"] is False
+    assert get_reservation_state(reservation_id)["status"] == "checked_out"
+    assert get_room_state(room_id)["room_status"] == "available"
+
+
+def test_reservation_not_checked_in_cannot_check_out(
+    client,
+    reset_test_data,
+):
+    reservation_id = create_reception_reservation(client, "CO-006")
+
+    response = client.post(
+        f"/reception/reservations/{reservation_id}/check-out"
+    )
+
+    assert response.status_code == 409
+
+
+def test_repeated_check_out_is_rejected(
+    client,
+    reset_test_data,
+):
+    reservation_id = create_reception_reservation(client, "CO-007")
+    client.post(f"/reception/reservations/{reservation_id}/check-in")
+
+    first_response = client.post(
+        f"/reception/reservations/{reservation_id}/check-out"
+    )
+    second_response = client.post(
+        f"/reception/reservations/{reservation_id}/check-out"
+    )
+
+    assert first_response.status_code == 200
+    assert second_response.status_code == 409
+
+
+def test_room_not_occupied_blocks_check_out(
+    client,
+    reset_test_data,
+):
+    reservation_id = create_reception_reservation(client, "CO-008")
+    room_id = get_reservation_state(reservation_id)["room_id"]
+    set_reservation_status(reservation_id, "checked_in")
+
+    response = client.post(
+        f"/reception/reservations/{reservation_id}/check-out"
+    )
+
+    assert response.status_code == 409
+    assert get_room_state(room_id)["room_status"] == "available"
+
+
+def test_check_out_sends_room_out_of_service_when_repair_is_needed(
+    client,
+    reset_test_data,
+):
+    reservation_id = create_reception_reservation(client, "CO-009")
+    check_in_response = client.post(
+        f"/reception/reservations/{reservation_id}/check-in"
+    )
+    room_id = check_in_response.json()["room_id"]
+    set_room_state(room_id, maintenance_status="needs_repair")
+
+    response = client.post(
+        f"/reception/reservations/{reservation_id}/check-out"
+    )
+
+    assert response.status_code == 200
+
+    room = get_room_state(room_id)
+
+    assert room["room_status"] == "out_of_service"
+    assert room["cleaning_status"] == "dirty"
+    assert room["maintenance_status"] == "needs_repair"
+
+
+def test_check_out_final_update_failure_rolls_back_all_changes(
+    client,
+    reset_test_data,
+    monkeypatch,
+):
+    reservation_id = create_reception_reservation(client, "CO-010")
+    check_in_response = client.post(
+        f"/reception/reservations/{reservation_id}/check-in"
+    )
+    room_id = check_in_response.json()["room_id"]
+
+    def fail_close_account(connection, billing_account_id: int) -> None:
+        raise RuntimeError("final billing update failed")
+
+    monkeypatch.setattr(
+        billing_repository,
+        "close_billing_account_with_connection",
+        fail_close_account,
+    )
+
+    response = client.post(
+        f"/reception/reservations/{reservation_id}/check-out"
+    )
+
+    assert response.status_code == 503
+
+    reservation = get_reservation_state(reservation_id)
+    room = get_room_state(room_id)
+    account = get_billing_account_state(reservation_id)
+
+    assert reservation["status"] == "checked_in"
+    assert room["room_status"] == "occupied"
+    assert room["cleaning_status"] == "clean"
+    assert account["status"] == "open"

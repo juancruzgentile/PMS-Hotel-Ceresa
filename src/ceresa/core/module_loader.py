@@ -47,6 +47,13 @@ def is_module_enabled(module_name: str) -> bool:
     return bool(module_config.get("enabled", False))
 
 
+def is_module_loaded(module_name: str) -> bool:
+    """
+    Returns True if a module router was loaded successfully.
+    """
+    return module_name in LOADED_MODULES
+
+
 def import_router(import_path: str) -> APIRouter:
     """
     Imports a router using a string path.

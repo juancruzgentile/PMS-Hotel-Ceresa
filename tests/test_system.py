@@ -1,3 +1,6 @@
+from ceresa.core import module_loader
+
+
 def test_health_check(client):
     response = client.get("/")
 
@@ -69,3 +72,8 @@ def test_system_hotel_config(client):
     assert "default_language" in hotel_config
     assert "has_restaurant" in hotel_config
     assert "has_transport" in hotel_config
+
+
+def test_module_loader_reports_loaded_modules():
+    assert module_loader.is_module_loaded("rooms") is True
+    assert module_loader.is_module_loaded("broken_module") is False
