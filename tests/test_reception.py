@@ -1168,6 +1168,144 @@ def test_check_out_with_missing_actor_user_id_is_rejected_and_rolls_back(
     ]
 
 
+def test_reception_mvp_end_to_end_flow_with_actor_user(
+    client,
+    reset_test_data,
+):
+    guest_response = client.post(
+        "/guests",
+        json={
+            "guest_code": "MVP-GUEST-001",
+            "first_name": "MVP",
+            "last_name": "Guest",
+            "email": "mvp.guest@example.com",
+            "phone": None,
+            "nationality": "AR",
+            "notes": "End-to-end reception MVP test.",
+        },
+    )
+    room_response = client.post(
+        "/rooms",
+        json={
+            "room_number": "MVP-101",
+            "floor": 1,
+            "room_type": "MVP Suite",
+            "has_jacuzzi": False,
+            "has_balcony": True,
+            "notes": None,
+        },
+    )
+
+    assert guest_response.status_code == 200
+    assert room_response.status_code == 200
+
+    guest_id = guest_response.json()["guest_id"]
+    room_id = room_response.json()["room_id"]
+    actor_user_id = create_reception_actor_user(client, "MVP-001")
+
+    reservation_response = client.post(
+        "/reservations",
+        json={
+            "reservation_code": "MVP-RES-001",
+            "guest_id": guest_id,
+            "room_id": room_id,
+            "check_in_date": "2027-06-01",
+            "check_out_date": "2027-06-05",
+            "status": "confirmed",
+            "adults": 2,
+            "children": 0,
+            "notes": "MVP end-to-end reservation.",
+        },
+    )
+
+    assert reservation_response.status_code == 200
+    reservation_id = reservation_response.json()["reservation_id"]
+
+    account_response = client.post(
+        "/billing/accounts",
+        json={
+            "reservation_id": reservation_id,
+            "notes": "MVP billing account.",
+        },
+    )
+
+    assert account_response.status_code == 201
+    account_id = account_response.json()["billing_account_id"]
+
+    charge_response = client.post(
+        f"/billing/accounts/{account_id}/charges",
+        json={
+            "source_module": "rooms",
+            "description": "Accommodation package",
+            "amount_cents": 50000,
+        },
+    )
+    payment_response = client.post(
+        f"/billing/accounts/{account_id}/payments",
+        json={
+            "payment_method": "card",
+            "amount_cents": 50000,
+            "reference": "MVP-PAY-001",
+        },
+    )
+
+    assert charge_response.status_code == 201
+    assert payment_response.status_code == 201
+
+    summary_before = client.get(
+        f"/reception/reservations/{reservation_id}/summary"
+    )
+    assert summary_before.status_code == 200
+    before_data = summary_before.json()
+    assert before_data["reservation"]["id"] == reservation_id
+    assert before_data["billing_account"]["id"] == account_id
+    assert before_data["billing_account"]["balance_cents"] == 0
+
+    check_in_response = client.post(
+        f"/reception/reservations/{reservation_id}/check-in",
+        json={"actor_user_id": actor_user_id},
+    )
+    assert check_in_response.status_code == 200
+    assert check_in_response.json()["reservation_status"] == "checked_in"
+
+    summary_after_check_in = client.get(
+        f"/reception/reservations/{reservation_id}/summary"
+    )
+    assert summary_after_check_in.status_code == 200
+    assert (
+        summary_after_check_in.json()["reservation"]["status"]
+        == "checked_in"
+    )
+
+    check_out_response = client.post(
+        f"/reception/reservations/{reservation_id}/check-out",
+        json={"actor_user_id": actor_user_id},
+    )
+    assert check_out_response.status_code == 200
+    assert check_out_response.json()["reservation_status"] == "checked_out"
+
+    events_response = client.get(
+        f"/reception/reservations/{reservation_id}/events"
+    )
+    assert events_response.status_code == 200
+    events = events_response.json()
+
+    reservation = get_reservation_state(reservation_id)
+    room = get_room_state(room_id)
+    account = get_billing_account_state(reservation_id)
+
+    assert reservation["status"] == "checked_out"
+    assert room["room_status"] == "available"
+    assert room["cleaning_status"] == "dirty"
+    assert account["status"] == "closed"
+    assert [event["event_type"] for event in events] == [
+        "check_in_completed",
+        "check_out_completed",
+    ]
+    assert events[0]["actor_user_id"] == actor_user_id
+    assert events[1]["actor_user_id"] == actor_user_id
+
+
 def test_failed_check_in_does_not_create_audit_event(
     client,
     reset_test_data,

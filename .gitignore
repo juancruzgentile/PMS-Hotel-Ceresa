@@ -37,3 +37,9 @@ frontend/.vite/
 # OS files
 .DS_Store
 Thumbs.db
+
+# Frontend TypeScript/Vite generated files
+frontend/*.tsbuildinfo
+frontend/**/*.tsbuildinfo
+frontend/vite.config.js
+frontend/vite.config.d.ts
