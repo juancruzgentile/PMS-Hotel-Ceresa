@@ -225,3 +225,40 @@ CREATE TABLE IF NOT EXISTS billing_payments (
 
     CHECK (amount_cents > 0)
 );
+
+
+CREATE TABLE IF NOT EXISTS audit_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+    module TEXT NOT NULL,
+    event_type TEXT NOT NULL,
+    entity_type TEXT NOT NULL,
+    entity_id INTEGER NOT NULL,
+
+    reservation_id INTEGER,
+    room_id INTEGER,
+    billing_account_id INTEGER,
+    actor_user_id INTEGER,
+
+    before_state_json TEXT,
+    after_state_json TEXT,
+    metadata_json TEXT,
+
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (reservation_id)
+        REFERENCES reservations(id)
+        ON DELETE RESTRICT,
+
+    FOREIGN KEY (room_id)
+        REFERENCES rooms(id)
+        ON DELETE RESTRICT,
+
+    FOREIGN KEY (billing_account_id)
+        REFERENCES billing_accounts(id)
+        ON DELETE RESTRICT,
+
+    FOREIGN KEY (actor_user_id)
+        REFERENCES users(id)
+        ON DELETE RESTRICT
+);

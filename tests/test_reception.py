@@ -1,3 +1,4 @@
+from ceresa.audit import repository as audit_repository
 from ceresa.billing import repository as billing_repository
 from ceresa.db import get_connection
 from ceresa.reception import service
@@ -178,6 +179,28 @@ def get_billing_account_state(reservation_id: int) -> dict | None:
         ).fetchone()
 
     return dict(row) if row else None
+
+
+def list_audit_events_for_reservation(reservation_id: int) -> list[dict]:
+    with get_connection() as connection:
+        rows = connection.execute(
+            """
+            SELECT
+                id,
+                event_type,
+                reservation_id,
+                room_id,
+                billing_account_id,
+                before_state_json,
+                after_state_json
+            FROM audit_events
+            WHERE reservation_id = ?
+            ORDER BY id
+            """,
+            (reservation_id,),
+        ).fetchall()
+
+    return [dict(row) for row in rows]
 
 
 def create_billing_account_for_reservation(
@@ -941,3 +964,270 @@ def test_check_out_final_update_failure_rolls_back_all_changes(
     assert room["room_status"] == "occupied"
     assert room["cleaning_status"] == "clean"
     assert account["status"] == "open"
+
+
+def test_successful_check_in_creates_one_audit_event(
+    client,
+    reset_test_data,
+):
+    reservation_id = create_reception_reservation(client, "AU-001")
+
+    response = client.post(
+        f"/reception/reservations/{reservation_id}/check-in"
+    )
+
+    assert response.status_code == 200
+
+    events = list_audit_events_for_reservation(reservation_id)
+
+    assert len(events) == 1
+    assert events[0]["event_type"] == "check_in_completed"
+    assert events[0]["reservation_id"] == reservation_id
+    assert events[0]["room_id"] == response.json()["room_id"]
+    assert events[0]["billing_account_id"] == response.json()[
+        "billing_account_id"
+    ]
+
+
+def test_check_in_audit_event_contains_before_and_after_state(
+    client,
+    reset_test_data,
+):
+    reservation_id = create_reception_reservation(client, "AU-002")
+
+    response = client.post(
+        f"/reception/reservations/{reservation_id}/check-in"
+    )
+
+    assert response.status_code == 200
+
+    event_response = client.get(
+        f"/reception/reservations/{reservation_id}/events"
+    )
+    event = event_response.json()[0]
+
+    assert event["before_state"]["reservation_status"] == "confirmed"
+    assert event["before_state"]["room_status"] == "available"
+    assert event["before_state"]["cleaning_status"] == "clean"
+    assert event["before_state"]["maintenance_status"] == "ok"
+    assert "billing_account_status" not in event["before_state"]
+    assert event["after_state"]["reservation_status"] == "checked_in"
+    assert event["after_state"]["room_status"] == "occupied"
+    assert event["after_state"]["cleaning_status"] == "clean"
+    assert event["after_state"]["maintenance_status"] == "ok"
+    assert event["after_state"]["billing_account_status"] == "open"
+
+
+def test_successful_check_out_creates_second_audit_event_in_order(
+    client,
+    reset_test_data,
+):
+    reservation_id = create_reception_reservation(client, "AU-003")
+    client.post(f"/reception/reservations/{reservation_id}/check-in")
+
+    check_out_response = client.post(
+        f"/reception/reservations/{reservation_id}/check-out"
+    )
+
+    assert check_out_response.status_code == 200
+
+    event_response = client.get(
+        f"/reception/reservations/{reservation_id}/events"
+    )
+    events = event_response.json()
+
+    assert [event["event_type"] for event in events] == [
+        "check_in_completed",
+        "check_out_completed",
+    ]
+    assert events[0]["id"] < events[1]["id"]
+    assert events[1]["before_state"]["reservation_status"] == "checked_in"
+    assert events[1]["after_state"]["reservation_status"] == "checked_out"
+    assert events[1]["after_state"]["cleaning_status"] == "dirty"
+    assert events[1]["after_state"]["billing_account_status"] == "closed"
+
+
+def test_failed_check_in_does_not_create_audit_event(
+    client,
+    reset_test_data,
+):
+    reservation_id = create_reception_reservation(
+        client,
+        "AU-004",
+        status="pending",
+    )
+
+    response = client.post(
+        f"/reception/reservations/{reservation_id}/check-in"
+    )
+
+    assert response.status_code == 409
+    assert list_audit_events_for_reservation(reservation_id) == []
+
+
+def test_rejected_check_out_with_pending_balance_does_not_create_event(
+    client,
+    reset_test_data,
+):
+    reservation_id = create_reception_reservation(client, "AU-005")
+    check_in_response = client.post(
+        f"/reception/reservations/{reservation_id}/check-in"
+    )
+    account_id = check_in_response.json()["billing_account_id"]
+    add_billing_charge(client, account_id, 1000)
+
+    response = client.post(
+        f"/reception/reservations/{reservation_id}/check-out"
+    )
+
+    events = list_audit_events_for_reservation(reservation_id)
+
+    assert response.status_code == 409
+    assert [event["event_type"] for event in events] == [
+        "check_in_completed"
+    ]
+
+
+def test_check_out_with_billing_disabled_creates_event_without_account(
+    client,
+    reset_test_data,
+    monkeypatch,
+):
+    reservation_id = create_reception_reservation(client, "AU-006")
+    room_id = get_reservation_state(reservation_id)["room_id"]
+    set_reservation_status(reservation_id, "checked_in")
+    set_room_state(room_id, room_status="occupied")
+    disable_billing(monkeypatch)
+
+    response = client.post(
+        f"/reception/reservations/{reservation_id}/check-out"
+    )
+
+    assert response.status_code == 200
+
+    events = list_audit_events_for_reservation(reservation_id)
+
+    assert len(events) == 1
+    assert events[0]["event_type"] == "check_out_completed"
+    assert events[0]["billing_account_id"] is None
+
+
+def test_reservation_events_returns_empty_list_without_events(
+    client,
+    reset_test_data,
+):
+    reservation_id = create_reception_reservation(client, "AU-007")
+
+    response = client.get(
+        f"/reception/reservations/{reservation_id}/events"
+    )
+
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+def test_reservation_events_returns_404_for_missing_reservation(
+    client,
+    reset_test_data,
+):
+    response = client.get("/reception/reservations/999999/events")
+
+    assert response.status_code == 404
+
+
+def test_audit_insert_failure_rolls_back_check_in(
+    client,
+    reset_test_data,
+    monkeypatch,
+):
+    reservation_id = create_reception_reservation(client, "AU-008")
+    room_id = get_reservation_state(reservation_id)["room_id"]
+
+    def fail_create_event(connection, event_data: dict) -> int:
+        raise RuntimeError("audit insert failed")
+
+    monkeypatch.setattr(
+        audit_repository,
+        "create_audit_event_with_connection",
+        fail_create_event,
+    )
+
+    response = client.post(
+        f"/reception/reservations/{reservation_id}/check-in"
+    )
+
+    assert response.status_code == 503
+    assert get_reservation_state(reservation_id)["status"] == "confirmed"
+    assert get_room_state(room_id)["room_status"] == "available"
+    assert get_billing_account_state(reservation_id) is None
+    assert list_audit_events_for_reservation(reservation_id) == []
+
+
+def test_audit_insert_failure_rolls_back_check_out(
+    client,
+    reset_test_data,
+    monkeypatch,
+):
+    reservation_id = create_reception_reservation(client, "AU-009")
+    check_in_response = client.post(
+        f"/reception/reservations/{reservation_id}/check-in"
+    )
+    room_id = check_in_response.json()["room_id"]
+
+    def fail_create_event(connection, event_data: dict) -> int:
+        raise RuntimeError("audit insert failed")
+
+    monkeypatch.setattr(
+        audit_repository,
+        "create_audit_event_with_connection",
+        fail_create_event,
+    )
+
+    response = client.post(
+        f"/reception/reservations/{reservation_id}/check-out"
+    )
+
+    events = list_audit_events_for_reservation(reservation_id)
+    account = get_billing_account_state(reservation_id)
+
+    assert response.status_code == 503
+    assert get_reservation_state(reservation_id)["status"] == "checked_in"
+    assert get_room_state(room_id)["room_status"] == "occupied"
+    assert get_room_state(room_id)["cleaning_status"] == "clean"
+    assert account["status"] == "open"
+    assert [event["event_type"] for event in events] == [
+        "check_in_completed"
+    ]
+
+
+def test_audit_states_are_returned_as_json_objects(
+    client,
+    reset_test_data,
+):
+    reservation_id = create_reception_reservation(client, "AU-010")
+    client.post(f"/reception/reservations/{reservation_id}/check-in")
+
+    response = client.get(
+        f"/reception/reservations/{reservation_id}/events"
+    )
+    event = response.json()[0]
+
+    assert isinstance(event["before_state"], dict)
+    assert isinstance(event["after_state"], dict)
+    assert isinstance(event["metadata"], dict)
+
+
+def test_audit_events_are_not_mutable_from_api(client):
+    routes = [
+        route
+        for route in client.app.routes
+        if "/events" in getattr(route, "path", "")
+    ]
+    mutable_methods = {
+        method
+        for route in routes
+        for method in route.methods
+        if method in {"DELETE", "PATCH", "POST", "PUT"}
+    }
+
+    assert mutable_methods == set()

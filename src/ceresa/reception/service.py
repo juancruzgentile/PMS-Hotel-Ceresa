@@ -1,7 +1,9 @@
 from datetime import date
 from importlib import import_module
+import json
 from typing import Any
 
+from ceresa.audit import repository as audit_repository
 from ceresa.core import module_loader
 from ceresa.core.settings import HOTEL_CONFIG
 from ceresa.db import get_connection
@@ -89,6 +91,84 @@ def _get_billing_repository_if_enabled() -> Any | None:
     return _load_repository("billing")
 
 
+def _build_operational_state(
+    reservation_status: str,
+    room: dict[str, Any],
+    billing_account_status: str | None = None,
+) -> dict[str, Any]:
+    state = {
+        "reservation_status": reservation_status,
+        "room_status": room["room_status"],
+        "cleaning_status": room["cleaning_status"],
+        "maintenance_status": room["maintenance_status"],
+    }
+
+    if billing_account_status is not None:
+        state["billing_account_status"] = billing_account_status
+
+    return state
+
+
+def _serialize_state(state: dict[str, Any]) -> str:
+    return json.dumps(state, sort_keys=True)
+
+
+def _create_reception_audit_event(
+    connection: Any,
+    event_type: str,
+    reservation_id: int,
+    room_id: int,
+    billing_account_id: int | None,
+    before_state: dict[str, Any],
+    after_state: dict[str, Any],
+    metadata: dict[str, Any] | None = None,
+) -> int:
+    """
+    Creates a Reception audit event inside the current transaction.
+    """
+    return audit_repository.create_audit_event_with_connection(
+        connection,
+        {
+            "module": "reception",
+            "event_type": event_type,
+            "entity_type": "reservation",
+            "entity_id": reservation_id,
+            "reservation_id": reservation_id,
+            "room_id": room_id,
+            "billing_account_id": billing_account_id,
+            "actor_user_id": None,
+            "before_state_json": _serialize_state(before_state),
+            "after_state_json": _serialize_state(after_state),
+            "metadata_json": _serialize_state(metadata or {}),
+        },
+    )
+
+
+def _parse_event_json(raw_value: str | None) -> dict[str, Any]:
+    if raw_value is None:
+        return {}
+
+    return json.loads(raw_value)
+
+
+def _present_audit_event(event: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": event["id"],
+        "module": event["module"],
+        "event_type": event["event_type"],
+        "entity_type": event["entity_type"],
+        "entity_id": event["entity_id"],
+        "reservation_id": event["reservation_id"],
+        "room_id": event["room_id"],
+        "billing_account_id": event["billing_account_id"],
+        "actor_user_id": event["actor_user_id"],
+        "before_state": _parse_event_json(event["before_state_json"]),
+        "after_state": _parse_event_json(event["after_state_json"]),
+        "metadata": _parse_event_json(event["metadata_json"]),
+        "created_at": event["created_at"],
+    }
+
+
 def check_in_reservation(reservation_id: int) -> dict[str, Any]:
     """
     Completes a reservation check-in in one SQLite transaction.
@@ -130,6 +210,8 @@ def check_in_reservation(reservation_id: int) -> dict[str, Any]:
         billing_repository = _get_billing_repository_if_enabled()
         billing_enabled = billing_repository is not None
         billing_account_id = None
+        before_billing_account_status = None
+        after_billing_account_status = None
 
         if billing_enabled:
             billing_account = _call_dependency(
@@ -149,6 +231,7 @@ def check_in_reservation(reservation_id: int) -> dict[str, Any]:
                         None,
                     ),
                 )
+                after_billing_account_status = "open"
             else:
                 if billing_account["status"] != "open":
                     raise ReceptionBusinessRuleError(
@@ -156,6 +239,14 @@ def check_in_reservation(reservation_id: int) -> dict[str, Any]:
                     )
 
                 billing_account_id = billing_account["id"]
+                before_billing_account_status = billing_account["status"]
+                after_billing_account_status = billing_account["status"]
+
+        before_state = _build_operational_state(
+            reservation["status"],
+            room,
+            before_billing_account_status,
+        )
 
         _call_dependency(
             "reservations",
@@ -171,6 +262,25 @@ def check_in_reservation(reservation_id: int) -> dict[str, Any]:
                 connection,
                 room["id"],
                 "occupied",
+            ),
+        )
+        after_room = dict(room)
+        after_room["room_status"] = "occupied"
+        after_state = _build_operational_state(
+            "checked_in",
+            after_room,
+            after_billing_account_status,
+        )
+        _call_dependency(
+            "audit",
+            lambda: _create_reception_audit_event(
+                connection,
+                "check_in_completed",
+                reservation_id,
+                room["id"],
+                billing_account_id,
+                before_state,
+                after_state,
             ),
         )
 
@@ -271,6 +381,11 @@ def check_out_reservation(reservation_id: int) -> dict[str, Any]:
             if room["maintenance_status"] == "ok"
             else "out_of_service"
         )
+        before_state = _build_operational_state(
+            reservation["status"],
+            room,
+            billing_account["status"] if billing_account else None,
+        )
 
         _call_dependency(
             "reservations",
@@ -298,6 +413,27 @@ def check_out_reservation(reservation_id: int) -> dict[str, Any]:
                     billing_account["id"],
                 ),
             )
+
+        after_room = dict(room)
+        after_room["room_status"] = final_room_status
+        after_room["cleaning_status"] = "dirty"
+        after_state = _build_operational_state(
+            "checked_out",
+            after_room,
+            billing_account_status,
+        )
+        _call_dependency(
+            "audit",
+            lambda: _create_reception_audit_event(
+                connection,
+                "check_out_completed",
+                reservation_id,
+                room["id"],
+                billing_account["id"] if billing_account else None,
+                before_state,
+                after_state,
+            ),
+        )
 
         connection.commit()
 
@@ -394,3 +530,33 @@ def get_reservation_summary(reservation_id: int) -> dict[str, Any] | None:
         "billing_enabled": True,
         "billing_account": billing_account,
     }
+
+
+def list_reservation_events(
+    reservation_id: int,
+) -> list[dict[str, Any]] | None:
+    """
+    Returns audit events for one reservation, or None if missing.
+    """
+    reservations_repository = _load_repository("reservations")
+
+    try:
+        reservation = reservations_repository.get_reservation_by_id(
+            reservation_id
+        )
+
+    except Exception as error:
+        raise ReceptionDependencyUnavailable("reservations") from error
+
+    if reservation is None:
+        return None
+
+    try:
+        events = audit_repository.list_audit_events_by_reservation_id(
+            reservation_id
+        )
+
+    except Exception as error:
+        raise ReceptionDependencyUnavailable("audit") from error
+
+    return [_present_audit_event(event) for event in events]

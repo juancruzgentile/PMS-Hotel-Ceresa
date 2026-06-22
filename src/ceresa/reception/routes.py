@@ -90,6 +90,26 @@ def get_reservation_summary(reservation_id: int) -> dict:
     return summary
 
 
+@router.get("/reservations/{reservation_id}/events")
+def list_reservation_events(reservation_id: int) -> list[dict]:
+    """
+    Returns immutable audit events for one reservation.
+    """
+    try:
+        events = service.list_reservation_events(reservation_id)
+
+    except service.ReceptionDependencyUnavailable as error:
+        _raise_http_error(error)
+
+    if events is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Reservation not found.",
+        )
+
+    return events
+
+
 @router.post("/reservations/{reservation_id}/check-in")
 def check_in_reservation(reservation_id: int) -> dict:
     """

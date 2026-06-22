@@ -30,6 +30,8 @@ def reset_test_data() -> None:
     initialize_database()
 
     with get_connection() as connection:
+        connection.execute("DELETE FROM audit_events")
+
         connection.execute("DELETE FROM billing_payments")
         connection.execute("DELETE FROM billing_charges")
         connection.execute("DELETE FROM billing_accounts")
@@ -46,6 +48,7 @@ def reset_test_data() -> None:
             """
             DELETE FROM sqlite_sequence
             WHERE name IN (
+                'audit_events',
                 'billing_payments',
                 'billing_charges',
                 'billing_accounts',
