@@ -68,6 +68,32 @@ def create_reception_reservation(
     return response.json()["reservation_id"]
 
 
+def create_reception_actor_user(client, suffix: str) -> int:
+    department_response = client.post(
+        "/users/departments",
+        json={
+            "code": f"rec-{suffix.lower()}",
+            "name": f"Reception {suffix}",
+        },
+    )
+
+    assert department_response.status_code == 200
+
+    user_response = client.post(
+        "/users",
+        json={
+            "username": f"reception_actor_{suffix.lower()}",
+            "full_name": "Reception Actor",
+            "email": None,
+            "user_type": "employee",
+            "department_id": department_response.json()["department_id"],
+        },
+    )
+
+    assert user_response.status_code == 200
+    return user_response.json()["user_id"]
+
+
 def cancel_reservation(reservation_id: int) -> None:
     with get_connection() as connection:
         connection.execute(
@@ -191,6 +217,7 @@ def list_audit_events_for_reservation(reservation_id: int) -> list[dict]:
                 reservation_id,
                 room_id,
                 billing_account_id,
+                actor_user_id,
                 before_state_json,
                 after_state_json
             FROM audit_events
@@ -987,6 +1014,47 @@ def test_successful_check_in_creates_one_audit_event(
     assert events[0]["billing_account_id"] == response.json()[
         "billing_account_id"
     ]
+    assert events[0]["actor_user_id"] is None
+
+
+def test_check_in_with_actor_user_id_creates_audit_event_with_actor(
+    client,
+    reset_test_data,
+):
+    reservation_id = create_reception_reservation(client, "AU-011")
+    actor_user_id = create_reception_actor_user(client, "AU-CI-011")
+
+    response = client.post(
+        f"/reception/reservations/{reservation_id}/check-in",
+        json={"actor_user_id": actor_user_id},
+    )
+
+    assert response.status_code == 200
+
+    events = list_audit_events_for_reservation(reservation_id)
+
+    assert len(events) == 1
+    assert events[0]["event_type"] == "check_in_completed"
+    assert events[0]["actor_user_id"] == actor_user_id
+
+
+def test_check_in_with_missing_actor_user_id_is_rejected_and_rolls_back(
+    client,
+    reset_test_data,
+):
+    reservation_id = create_reception_reservation(client, "AU-012")
+    room_id = get_reservation_state(reservation_id)["room_id"]
+
+    response = client.post(
+        f"/reception/reservations/{reservation_id}/check-in",
+        json={"actor_user_id": 999999},
+    )
+
+    assert response.status_code == 404
+    assert get_reservation_state(reservation_id)["status"] == "confirmed"
+    assert get_room_state(room_id)["room_status"] == "available"
+    assert get_billing_account_state(reservation_id) is None
+    assert list_audit_events_for_reservation(reservation_id) == []
 
 
 def test_check_in_audit_event_contains_before_and_after_state(
@@ -1045,6 +1113,59 @@ def test_successful_check_out_creates_second_audit_event_in_order(
     assert events[1]["after_state"]["reservation_status"] == "checked_out"
     assert events[1]["after_state"]["cleaning_status"] == "dirty"
     assert events[1]["after_state"]["billing_account_status"] == "closed"
+    assert events[1]["actor_user_id"] is None
+
+
+def test_check_out_with_actor_user_id_creates_audit_event_with_actor(
+    client,
+    reset_test_data,
+):
+    reservation_id = create_reception_reservation(client, "AU-013")
+    actor_user_id = create_reception_actor_user(client, "AU-CO-013")
+    client.post(f"/reception/reservations/{reservation_id}/check-in")
+
+    response = client.post(
+        f"/reception/reservations/{reservation_id}/check-out",
+        json={"actor_user_id": actor_user_id},
+    )
+
+    assert response.status_code == 200
+
+    events = list_audit_events_for_reservation(reservation_id)
+
+    assert [event["event_type"] for event in events] == [
+        "check_in_completed",
+        "check_out_completed",
+    ]
+    assert events[1]["actor_user_id"] == actor_user_id
+
+
+def test_check_out_with_missing_actor_user_id_is_rejected_and_rolls_back(
+    client,
+    reset_test_data,
+):
+    reservation_id = create_reception_reservation(client, "AU-014")
+    check_in_response = client.post(
+        f"/reception/reservations/{reservation_id}/check-in"
+    )
+    room_id = check_in_response.json()["room_id"]
+
+    response = client.post(
+        f"/reception/reservations/{reservation_id}/check-out",
+        json={"actor_user_id": 999999},
+    )
+
+    events = list_audit_events_for_reservation(reservation_id)
+    account = get_billing_account_state(reservation_id)
+
+    assert response.status_code == 404
+    assert get_reservation_state(reservation_id)["status"] == "checked_in"
+    assert get_room_state(room_id)["room_status"] == "occupied"
+    assert get_room_state(room_id)["cleaning_status"] == "clean"
+    assert account["status"] == "open"
+    assert [event["event_type"] for event in events] == [
+        "check_in_completed"
+    ]
 
 
 def test_failed_check_in_does_not_create_audit_event(

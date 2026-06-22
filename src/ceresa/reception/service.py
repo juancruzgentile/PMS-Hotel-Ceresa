@@ -119,6 +119,7 @@ def _create_reception_audit_event(
     reservation_id: int,
     room_id: int,
     billing_account_id: int | None,
+    actor_user_id: int | None,
     before_state: dict[str, Any],
     after_state: dict[str, Any],
     metadata: dict[str, Any] | None = None,
@@ -136,12 +137,32 @@ def _create_reception_audit_event(
             "reservation_id": reservation_id,
             "room_id": room_id,
             "billing_account_id": billing_account_id,
-            "actor_user_id": None,
+            "actor_user_id": actor_user_id,
             "before_state_json": _serialize_state(before_state),
             "after_state_json": _serialize_state(after_state),
             "metadata_json": _serialize_state(metadata or {}),
         },
     )
+
+
+def _validate_actor_user_if_present(
+    connection: Any,
+    actor_user_id: int | None,
+) -> None:
+    if actor_user_id is None:
+        return
+
+    users_repository = _load_repository("users")
+    user = _call_dependency(
+        "users",
+        lambda: users_repository.get_user_by_id_with_connection(
+            connection,
+            actor_user_id,
+        ),
+    )
+
+    if user is None:
+        raise ReceptionNotFoundError("Actor user not found.")
 
 
 def _parse_event_json(raw_value: str | None) -> dict[str, Any]:
@@ -169,7 +190,10 @@ def _present_audit_event(event: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def check_in_reservation(reservation_id: int) -> dict[str, Any]:
+def check_in_reservation(
+    reservation_id: int,
+    actor_user_id: int | None = None,
+) -> dict[str, Any]:
     """
     Completes a reservation check-in in one SQLite transaction.
     """
@@ -179,6 +203,7 @@ def check_in_reservation(reservation_id: int) -> dict[str, Any]:
 
     try:
         connection.execute("BEGIN")
+        _validate_actor_user_if_present(connection, actor_user_id)
 
         reservation = _call_dependency(
             "reservations",
@@ -279,6 +304,7 @@ def check_in_reservation(reservation_id: int) -> dict[str, Any]:
                 reservation_id,
                 room["id"],
                 billing_account_id,
+                actor_user_id,
                 before_state,
                 after_state,
             ),
@@ -304,7 +330,10 @@ def check_in_reservation(reservation_id: int) -> dict[str, Any]:
         connection.close()
 
 
-def check_out_reservation(reservation_id: int) -> dict[str, Any]:
+def check_out_reservation(
+    reservation_id: int,
+    actor_user_id: int | None = None,
+) -> dict[str, Any]:
     """
     Completes a reservation check-out in one SQLite transaction.
     """
@@ -314,6 +343,7 @@ def check_out_reservation(reservation_id: int) -> dict[str, Any]:
 
     try:
         connection.execute("BEGIN")
+        _validate_actor_user_if_present(connection, actor_user_id)
 
         reservation = _call_dependency(
             "reservations",
@@ -430,6 +460,7 @@ def check_out_reservation(reservation_id: int) -> dict[str, Any]:
                 reservation_id,
                 room["id"],
                 billing_account["id"] if billing_account else None,
+                actor_user_id,
                 before_state,
                 after_state,
             ),

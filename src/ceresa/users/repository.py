@@ -1,5 +1,6 @@
 import sqlite3
 from typing import Any
+from sqlite3 import Connection
 
 from ceresa.db import get_connection
 
@@ -45,6 +46,38 @@ def get_department_by_id(department_id: int) -> dict[str, Any] | None:
             """,
             (department_id,),
         ).fetchone()
+
+    return dict(row) if row else None
+
+
+def get_user_by_id_with_connection(
+    connection: Connection,
+    user_id: int,
+) -> dict[str, Any] | None:
+    """
+    Returns one user using an existing transaction.
+    """
+    row = connection.execute(
+        """
+        SELECT
+            users.id,
+            users.username,
+            users.full_name,
+            users.email,
+            users.user_type,
+            users.department_id,
+            departments.code AS department_code,
+            departments.name AS department_name,
+            users.is_active,
+            users.created_at,
+            users.updated_at
+        FROM users
+        LEFT JOIN departments
+            ON departments.id = users.department_id
+        WHERE users.id = ?
+        """,
+        (user_id,),
+    ).fetchone()
 
     return dict(row) if row else None
 

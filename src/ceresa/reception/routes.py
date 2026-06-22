@@ -1,11 +1,16 @@
 from datetime import date
 
 from fastapi import APIRouter, HTTPException, status
+from pydantic import BaseModel, Field
 
 from ceresa.reception import service
 
 
 router = APIRouter(prefix="/reception", tags=["Reception"])
+
+
+class ReceptionAuditActor(BaseModel):
+    actor_user_id: int | None = Field(default=None, ge=1)
 
 
 def _raise_http_error(error: Exception) -> None:
@@ -111,12 +116,19 @@ def list_reservation_events(reservation_id: int) -> list[dict]:
 
 
 @router.post("/reservations/{reservation_id}/check-in")
-def check_in_reservation(reservation_id: int) -> dict:
+def check_in_reservation(
+    reservation_id: int,
+    payload: ReceptionAuditActor | None = None,
+) -> dict:
     """
     Completes a reservation check-in.
     """
     try:
-        return service.check_in_reservation(reservation_id)
+        actor_user_id = payload.actor_user_id if payload else None
+        return service.check_in_reservation(
+            reservation_id,
+            actor_user_id=actor_user_id,
+        )
 
     except (
         service.ReceptionBusinessRuleError,
@@ -127,12 +139,19 @@ def check_in_reservation(reservation_id: int) -> dict:
 
 
 @router.post("/reservations/{reservation_id}/check-out")
-def check_out_reservation(reservation_id: int) -> dict:
+def check_out_reservation(
+    reservation_id: int,
+    payload: ReceptionAuditActor | None = None,
+) -> dict:
     """
     Completes a reservation check-out.
     """
     try:
-        return service.check_out_reservation(reservation_id)
+        actor_user_id = payload.actor_user_id if payload else None
+        return service.check_out_reservation(
+            reservation_id,
+            actor_user_id=actor_user_id,
+        )
 
     except (
         service.ReceptionBusinessRuleError,
