@@ -67,6 +67,17 @@ type LastOutcome = {
   details?: unknown;
 } | null;
 
+type ReceptionRefresh = {
+  summary: ReceptionSummary;
+  events: AuditEvent[];
+};
+
+type ReceptionActionResult = {
+  actionResult: ApiRecord;
+  refresh: ReceptionRefresh | null;
+  refreshError: string | null;
+};
+
 class LocalValidationError extends Error {}
 
 function createDemoCodes(): DemoCodes {
@@ -245,6 +256,19 @@ function FieldHint({ children }: { children: string }) {
   return <p className="field-hint">{children}</p>;
 }
 
+const howToTestSteps = [
+  "Create guest.",
+  "Create room.",
+  "Create reservation.",
+  "Create billing account.",
+  "Add charge.",
+  "Register payment for same amount.",
+  "Load summary.",
+  "Check-in.",
+  "Check-out.",
+  "Load audit events.",
+];
+
 export function ReceptionMvpPage() {
   const [demoCodes, setDemoCodes] = useState(() => createDemoCodes());
   const [guestForm, setGuestForm] = useState(() =>
@@ -274,6 +298,7 @@ export function ReceptionMvpPage() {
   const [paymentCreated, setPaymentCreated] = useState(false);
   const [checkInDone, setCheckInDone] = useState(false);
   const [checkOutDone, setCheckOutDone] = useState(false);
+  const [lastStepCompleted, setLastStepCompleted] = useState("Not started");
 
   async function runStep<T>(
     action: () => Promise<T>,
@@ -328,6 +353,54 @@ export function ReceptionMvpPage() {
     setPaymentCreated(false);
     setCheckInDone(false);
     setCheckOutDone(false);
+    setLastStepCompleted("Demo codes regenerated");
+  }
+
+  function resetDemoFlow() {
+    const nextCodes = createDemoCodes();
+
+    setDemoCodes(nextCodes);
+    setGuestForm(createGuest(nextCodes));
+    setRoomForm(createRoom(nextCodes));
+    setReservationForm(createReservation(nextCodes));
+    setExistingRoomId("");
+    setReservationId("");
+    setBillingAccountId("");
+    setGuestId(null);
+    setRoomId(null);
+    setSummary(null);
+    setAccountSnapshot(null);
+    setEvents([]);
+    setLastOutcome(null);
+    setError(null);
+    setChargeCreated(false);
+    setPaymentCreated(false);
+    setCheckInDone(false);
+    setCheckOutDone(false);
+    setLastStepCompleted("Reset demo flow");
+  }
+
+  async function loadSummaryAndEvents(
+    activeReservationId: number,
+  ): Promise<ReceptionRefresh> {
+    const [nextSummary, nextEvents] = await Promise.all([
+      apiRequest<ReceptionSummary>(
+        endpoints.reception.summary(activeReservationId),
+      ),
+      apiRequest<AuditEvent[]>(
+        endpoints.reception.events(activeReservationId),
+      ),
+    ]);
+
+    return {
+      summary: nextSummary,
+      events: nextEvents,
+    };
+  }
+
+  function applyReceptionRefresh(refresh: ReceptionRefresh) {
+    setSummary(refresh.summary);
+    setEvents(refresh.events);
   }
 
   const currentReservationId = reservationId.trim()
@@ -337,11 +410,16 @@ export function ReceptionMvpPage() {
     ? Number(billingAccountId)
     : null;
   const currentBalance =
-    accountSnapshot?.balance_cents ??
     summary?.billing_account?.balance_cents ??
+    accountSnapshot?.balance_cents ??
     null;
   const currentCurrency =
-    accountSnapshot?.currency ?? summary?.billing_account?.currency ?? "ARS";
+    summary?.billing_account?.currency ?? accountSnapshot?.currency ?? "ARS";
+  const currentBillingAccountStatus =
+    summary?.billing_account?.status ?? accountSnapshot?.status ?? "-";
+  const currentReservationStatus = summary?.reservation.status ?? "-";
+  const checkoutBalanceWarning =
+    summary !== null && currentBalance !== null && currentBalance > 0;
 
   const flowSteps = [
     {
@@ -428,6 +506,57 @@ export function ReceptionMvpPage() {
           <section className="content-panel mvp-step">
             <div className="panel-heading">
               <div>
+                <h2>How to test</h2>
+                <p>Use this order for the full manual Reception MVP path.</p>
+              </div>
+            </div>
+            <ol className="how-to-test-list">
+              {howToTestSteps.map((step) => (
+                <li key={step}>{step}</li>
+              ))}
+            </ol>
+            <div className="button-row">
+              <button
+                className="secondary-button"
+                disabled={isBusy}
+                onClick={resetDemoFlow}
+              >
+                Reset demo flow
+              </button>
+              <button
+                className="secondary-button"
+                disabled={isBusy}
+                onClick={() =>
+                  runStep(
+                    () =>
+                      loadSummaryAndEvents(
+                        parsePositiveInteger(
+                          reservationId,
+                          "reservation_id",
+                        ),
+                      ),
+                    (result) => {
+                      applyReceptionRefresh(result);
+                      setLastStepCompleted(
+                        "Reload summary and events",
+                      );
+                      return {
+                        title: "Summary and audit events reloaded",
+                        message: `${result.events.length} audit event(s) are now visible for this reservation.`,
+                        details: result,
+                      };
+                    },
+                  )
+                }
+              >
+                Reload summary and events
+              </button>
+            </div>
+          </section>
+
+          <section className="content-panel mvp-step">
+            <div className="panel-heading">
+              <div>
                 <h2>1. Guest</h2>
                 <p>Create the guest record used by the demo reservation.</p>
               </div>
@@ -508,6 +637,7 @@ export function ReceptionMvpPage() {
                     ),
                   (result) => {
                     setGuestId(result.guest_id);
+                    setLastStepCompleted("Create guest");
                     return {
                       title: "Guest created",
                       message: `guest_id ${result.guest_id} is ready for the reservation.`,
@@ -600,6 +730,7 @@ export function ReceptionMvpPage() {
                     () => apiRequest<Room[]>(endpoints.rooms.list),
                     (result) => {
                       setRooms(result);
+                      setLastStepCompleted("Load rooms");
                       return {
                         title: "Rooms loaded",
                         message: `${result.length} room(s) available to choose from.`,
@@ -636,6 +767,7 @@ export function ReceptionMvpPage() {
                     (result) => {
                       setRoomId(result.room_id);
                       setExistingRoomId(String(result.room_id));
+                      setLastStepCompleted("Create room");
                       return {
                         title: "Room created",
                         message: `room_id ${result.room_id} is ready for the reservation.`,
@@ -753,6 +885,7 @@ export function ReceptionMvpPage() {
                   },
                   (result) => {
                     setReservationId(String(result.reservation_id));
+                    setLastStepCompleted("Create reservation");
                     return {
                       title: "Reservation created",
                       message: `reservation_id ${result.reservation_id} is ready for billing and reception.`,
@@ -842,6 +975,7 @@ export function ReceptionMvpPage() {
                       setBillingAccountId(
                         String(result.billing_account_id),
                       );
+                      setLastStepCompleted("Create billing account");
                       return {
                         title: "Billing account created",
                         message: `account_id ${result.billing_account_id} is ready for charges and payments.`,
@@ -886,6 +1020,7 @@ export function ReceptionMvpPage() {
                     (result) => {
                       setChargeCreated(true);
                       setAccountSnapshot(result);
+                      setLastStepCompleted("Add charge");
                       return {
                         title: "Charge added",
                         message: `Balance is now ${formatCurrencyFromCents(
@@ -933,6 +1068,7 @@ export function ReceptionMvpPage() {
                     (result) => {
                       setPaymentCreated(true);
                       setAccountSnapshot(result);
+                      setLastStepCompleted("Register payment");
                       return {
                         title: "Payment registered",
                         message: `Balance is now ${formatCurrencyFromCents(
@@ -976,6 +1112,12 @@ export function ReceptionMvpPage() {
               Actor user ID is manual traceability only; it is not real
               authentication.
             </FieldHint>
+            {checkoutBalanceWarning ? (
+              <div className="warning-banner">
+                The current summary shows an open balance. Check-out may
+                fail until payment brings the balance to zero.
+              </div>
+            ) : null}
             <div className="button-row">
               <button
                 className="secondary-button"
@@ -993,6 +1135,7 @@ export function ReceptionMvpPage() {
                       ),
                     (result) => {
                       setSummary(result);
+                      setLastStepCompleted("Load summary");
                       return {
                         title: "Summary loaded",
                         message: `${result.reservation.reservation_code} is ${result.reservation.status}.`,
@@ -1009,26 +1152,53 @@ export function ReceptionMvpPage() {
                 disabled={isBusy || reservationId.trim() === ""}
                 onClick={() =>
                   runStep(
-                    () =>
-                      apiRequest<ApiRecord>(
-                        endpoints.reception.checkIn(
-                          parsePositiveInteger(
-                            reservationId,
-                            "reservation_id",
-                          ),
-                        ),
+                    async (): Promise<ReceptionActionResult> => {
+                      const activeReservationId = parsePositiveInteger(
+                        reservationId,
+                        "reservation_id",
+                      );
+                      const actionResult = await apiRequest<ApiRecord>(
+                        endpoints.reception.checkIn(activeReservationId),
                         {
                           method: "POST",
                           body: optionalActorBody(actorUserId),
                         },
-                      ),
+                      );
+
+                      try {
+                        return {
+                          actionResult,
+                          refresh:
+                            await loadSummaryAndEvents(
+                              activeReservationId,
+                            ),
+                          refreshError: null,
+                        };
+                      } catch (refreshError) {
+                        return {
+                          actionResult,
+                          refresh: null,
+                          refreshError:
+                            refreshError instanceof Error
+                              ? refreshError.message
+                              : "Summary/events refresh failed.",
+                        };
+                      }
+                    },
                     (result) => {
                       setCheckInDone(true);
+                      setLastStepCompleted("Check-in");
+
+                      if (result.refresh) {
+                        applyReceptionRefresh(result.refresh);
+                      }
+
                       return {
                         title: "Check-in completed",
-                        message:
-                          "Load summary and audit events to verify the reception transaction.",
-                        details: result,
+                        message: result.refreshError
+                          ? `Check-in worked, but summary/events refresh failed: ${result.refreshError}`
+                          : "Check-in worked and summary/events were refreshed.",
+                        details: result.actionResult,
                       };
                     },
                   )
@@ -1041,26 +1211,53 @@ export function ReceptionMvpPage() {
                 disabled={isBusy || reservationId.trim() === ""}
                 onClick={() =>
                   runStep(
-                    () =>
-                      apiRequest<ApiRecord>(
-                        endpoints.reception.checkOut(
-                          parsePositiveInteger(
-                            reservationId,
-                            "reservation_id",
-                          ),
-                        ),
+                    async (): Promise<ReceptionActionResult> => {
+                      const activeReservationId = parsePositiveInteger(
+                        reservationId,
+                        "reservation_id",
+                      );
+                      const actionResult = await apiRequest<ApiRecord>(
+                        endpoints.reception.checkOut(activeReservationId),
                         {
                           method: "POST",
                           body: optionalActorBody(actorUserId),
                         },
-                      ),
+                      );
+
+                      try {
+                        return {
+                          actionResult,
+                          refresh:
+                            await loadSummaryAndEvents(
+                              activeReservationId,
+                            ),
+                          refreshError: null,
+                        };
+                      } catch (refreshError) {
+                        return {
+                          actionResult,
+                          refresh: null,
+                          refreshError:
+                            refreshError instanceof Error
+                              ? refreshError.message
+                              : "Summary/events refresh failed.",
+                        };
+                      }
+                    },
                     (result) => {
                       setCheckOutDone(true);
+                      setLastStepCompleted("Check-out");
+
+                      if (result.refresh) {
+                        applyReceptionRefresh(result.refresh);
+                      }
+
                       return {
                         title: "Check-out completed",
-                        message:
-                          "Load summary and audit events to verify final status and audit trail.",
-                        details: result,
+                        message: result.refreshError
+                          ? `Check-out worked, but summary/events refresh failed: ${result.refreshError}`
+                          : "Check-out worked and summary/events were refreshed.",
+                        details: result.actionResult,
                       };
                     },
                   )
@@ -1084,6 +1281,7 @@ export function ReceptionMvpPage() {
                       ),
                     (result) => {
                       setEvents(result);
+                      setLastStepCompleted("Load audit events");
                       return {
                         title: "Audit events loaded",
                         message: `${result.length} audit event(s) found for this reservation.`,
@@ -1099,6 +1297,39 @@ export function ReceptionMvpPage() {
         </div>
 
         <aside className="mvp-sidebar">
+          <section className="content-panel mvp-summary">
+            <h2>Operational status</h2>
+            <dl>
+              <div>
+                <dt>Reservation status</dt>
+                <dd>{currentReservationStatus}</dd>
+              </div>
+              <div>
+                <dt>Billing status</dt>
+                <dd>{currentBillingAccountStatus}</dd>
+              </div>
+              <div>
+                <dt>Balance</dt>
+                <dd>
+                  {currentBalance === null
+                    ? "-"
+                    : formatCurrencyFromCents(
+                        currentBalance,
+                        currentCurrency,
+                      )}
+                </dd>
+              </div>
+              <div>
+                <dt>Audit events</dt>
+                <dd>{events.length}</dd>
+              </div>
+              <div>
+                <dt>Last completed</dt>
+                <dd>{lastStepCompleted}</dd>
+              </div>
+            </dl>
+          </section>
+
           <section className="content-panel mvp-summary">
             <div className="panel-heading compact">
               <div>

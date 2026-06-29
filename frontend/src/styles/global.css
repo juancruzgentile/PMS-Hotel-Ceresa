@@ -557,6 +557,20 @@ textarea {
   gap: 8px;
 }
 
+.how-to-test-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 20px;
+  margin: 0 0 14px;
+  padding-left: 20px;
+  color: #4d5a69;
+  font-size: 13px;
+}
+
+.how-to-test-list li {
+  padding-left: 2px;
+}
+
 .field-hint {
   margin: -4px 0 14px;
   color: #607080;
@@ -602,6 +616,16 @@ textarea {
   color: #9d2323;
   margin-bottom: 16px;
   padding: 12px 14px;
+}
+
+.warning-banner {
+  border: 1px solid #f1d08b;
+  border-radius: 8px;
+  background: #fff8e8;
+  color: #765300;
+  margin: -2px 0 14px;
+  padding: 10px 12px;
+  font-size: 13px;
 }
 
 .mvp-sidebar {
@@ -721,6 +745,7 @@ textarea {
   .housekeeping-layout,
   .mvp-layout,
   .mvp-flow,
+  .how-to-test-list,
   .form-grid {
     grid-template-columns: 1fr;
   }
