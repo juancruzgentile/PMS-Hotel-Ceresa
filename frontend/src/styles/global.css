@@ -425,6 +425,93 @@ textarea {
   color: #607080;
 }
 
+.guests-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: 16px;
+  align-items: start;
+}
+
+.guests-main {
+  min-width: 0;
+}
+
+.guests-detail {
+  display: grid;
+  gap: 16px;
+}
+
+.guests-toolbar {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) 180px;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.guests-toolbar label {
+  display: grid;
+  gap: 6px;
+  color: #4d5a69;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.guests-toolbar input,
+.guests-toolbar select {
+  min-height: 38px;
+  border: 1px solid #d7dde4;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #18202c;
+  padding: 7px 10px;
+}
+
+.guests-table {
+  display: grid;
+  overflow-x: auto;
+}
+
+.guests-table-row {
+  display: grid;
+  grid-template-columns:
+    56px 140px 130px 130px minmax(180px, 1fr) 140px 120px 70px 150px;
+  gap: 10px;
+  align-items: center;
+  min-width: 1120px;
+  min-height: 48px;
+  border: 0;
+  border-bottom: 1px solid #edf0f3;
+  background: transparent;
+  color: #26313f;
+  padding: 0;
+  text-align: left;
+}
+
+button.guests-table-row {
+  cursor: pointer;
+}
+
+button.guests-table-row:hover,
+button.guests-table-row.selected {
+  background: #f7fbfa;
+}
+
+.guests-table-head {
+  min-height: 36px;
+  color: #607080;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.detail-note {
+  border: 1px solid #edf0f3;
+  border-radius: 8px;
+  background: #f6f7f9;
+  color: #4d5a69;
+  margin: 14px 0 0;
+  padding: 10px 12px;
+}
+
 .reservations-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 360px;
@@ -855,6 +942,8 @@ button.reservations-table-row.selected {
   .metric-grid,
   .dashboard-layout,
   .housekeeping-layout,
+  .guests-layout,
+  .guests-toolbar,
   .reservations-layout,
   .reservations-toolbar,
   .mvp-layout,
