@@ -425,6 +425,118 @@ textarea {
   color: #607080;
 }
 
+.reservations-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 16px;
+  align-items: start;
+}
+
+.reservations-main {
+  min-width: 0;
+}
+
+.reservations-detail {
+  display: grid;
+  gap: 16px;
+}
+
+.reservations-toolbar {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) 220px;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.reservations-toolbar label {
+  display: grid;
+  gap: 6px;
+  color: #4d5a69;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.reservations-toolbar input,
+.reservations-toolbar select {
+  min-height: 38px;
+  border: 1px solid #d7dde4;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #18202c;
+  padding: 7px 10px;
+}
+
+.reservations-table {
+  display: grid;
+  overflow-x: auto;
+}
+
+.reservations-table-row {
+  display: grid;
+  grid-template-columns:
+    56px 150px minmax(170px, 1.2fr) 90px 112px 112px 110px 70px 80px;
+  gap: 10px;
+  align-items: center;
+  min-width: 980px;
+  min-height: 48px;
+  border: 0;
+  border-bottom: 1px solid #edf0f3;
+  background: transparent;
+  color: #26313f;
+  padding: 0;
+  text-align: left;
+}
+
+button.reservations-table-row {
+  cursor: pointer;
+}
+
+button.reservations-table-row:hover,
+button.reservations-table-row.selected {
+  background: #f7fbfa;
+}
+
+.reservations-table-head {
+  min-height: 36px;
+  color: #607080;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.text-link {
+  display: inline-flex;
+  min-height: 38px;
+  align-items: center;
+  color: #1b5e57;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.text-link:hover {
+  text-decoration: underline;
+}
+
+.muted-text {
+  margin: 0;
+  color: #607080;
+}
+
+.success-banner {
+  border: 1px solid #b7dfc5;
+  border-radius: 8px;
+  background: #f4fbf6;
+  color: #1f6a3d;
+  margin-bottom: 16px;
+  padding: 12px 14px;
+}
+
 .mvp-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 340px;
@@ -743,6 +855,8 @@ textarea {
   .metric-grid,
   .dashboard-layout,
   .housekeeping-layout,
+  .reservations-layout,
+  .reservations-toolbar,
   .mvp-layout,
   .mvp-flow,
   .how-to-test-list,
