@@ -437,11 +437,92 @@ textarea {
   gap: 16px;
 }
 
+.mvp-flow-panel {
+  margin-bottom: 16px;
+}
+
+.mvp-flow-panel h2 {
+  margin: 0 0 14px;
+  font-size: 18px;
+}
+
+.mvp-flow {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mvp-flow-item {
+  display: flex;
+  gap: 10px;
+  min-width: 0;
+  border: 1px solid #dfe4ea;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 10px;
+}
+
+.mvp-flow-marker {
+  width: 10px;
+  height: 10px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: #b8c2cc;
+  margin-top: 4px;
+}
+
+.mvp-flow-item.complete {
+  border-color: #b7dfc5;
+  background: #f4fbf6;
+}
+
+.mvp-flow-item.complete .mvp-flow-marker {
+  background: #1f6a3d;
+}
+
+.mvp-flow-item.current {
+  border-color: #a9c8c4;
+  background: #f7fbfa;
+}
+
+.mvp-flow-item.current .mvp-flow-marker {
+  background: #1b5e57;
+}
+
+.mvp-flow-item div > strong,
+.mvp-flow-item div > span {
+  display: block;
+}
+
+.mvp-flow-item div > strong {
+  color: #26313f;
+  font-size: 13px;
+}
+
+.mvp-flow-item div > span {
+  margin-top: 3px;
+  color: #607080;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
 .mvp-step h2,
 .mvp-summary h2,
 .mvp-result h2 {
   margin: 0 0 14px;
   font-size: 18px;
+}
+
+.mvp-step .panel-heading h2,
+.mvp-summary .panel-heading h2 {
+  margin: 0;
+}
+
+.panel-heading.compact {
+  margin-bottom: 12px;
 }
 
 .form-grid {
@@ -476,6 +557,12 @@ textarea {
   gap: 8px;
 }
 
+.field-hint {
+  margin: -4px 0 14px;
+  color: #607080;
+  font-size: 13px;
+}
+
 .primary-button,
 .secondary-button {
   min-height: 38px;
@@ -501,6 +588,11 @@ textarea {
 .secondary-button:disabled {
   cursor: not-allowed;
   opacity: 0.55;
+}
+
+.full-width-button {
+  width: 100%;
+  margin-top: 14px;
 }
 
 .error-banner {
@@ -544,6 +636,8 @@ textarea {
 .mvp-summary dd {
   margin: 0;
   font-weight: 700;
+  overflow-wrap: anywhere;
+  text-align: right;
 }
 
 .audit-list {
@@ -568,6 +662,20 @@ textarea {
   background: #f6f7f9;
   padding: 12px;
   white-space: pre-wrap;
+}
+
+.mvp-result p {
+  margin: 0 0 12px;
+  color: #607080;
+}
+
+.mvp-result details {
+  color: #4d5a69;
+}
+
+.mvp-result summary {
+  cursor: pointer;
+  font-weight: 700;
 }
 
 .empty-state h2 {
@@ -612,6 +720,7 @@ textarea {
   .dashboard-layout,
   .housekeeping-layout,
   .mvp-layout,
+  .mvp-flow,
   .form-grid {
     grid-template-columns: 1fr;
   }

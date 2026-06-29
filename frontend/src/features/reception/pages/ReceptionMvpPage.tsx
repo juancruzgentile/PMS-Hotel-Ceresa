@@ -6,6 +6,7 @@ import { PageHeader } from "@/shared/components/PageHeader";
 import { formatCurrencyFromCents } from "@/shared/utils/formatters";
 
 type ApiRecord = Record<string, unknown>;
+type StepStatus = "complete" | "current" | "pending";
 
 type Room = {
   id: number;
@@ -25,14 +26,21 @@ type ReceptionSummary = {
     guest_last_name: string;
   };
   billing_enabled: boolean;
-  billing_account: {
-    id: number;
-    status: string;
-    balance_cents: number;
-    currency: string;
-    charges_total_cents: number;
-    payments_total_cents: number;
-  } | null;
+  billing_account: BillingAccount | null;
+};
+
+type BillingAccount = {
+  id: number;
+  status: string;
+  balance_cents: number;
+  currency: string;
+  charges_total_cents: number;
+  payments_total_cents: number;
+};
+
+type BillingAccountDetail = BillingAccount & {
+  charges?: unknown[];
+  payments?: unknown[];
 };
 
 type AuditEvent = {
@@ -44,47 +52,122 @@ type AuditEvent = {
   created_at: string;
 };
 
-const todayCode = new Date()
-  .toISOString()
-  .slice(0, 10)
-  .replace(/-/g, "");
-const demoRunCode = `${todayCode}-${Date.now()
-  .toString(36)
-  .toUpperCase()}`;
-const demoShortCode = demoRunCode.slice(-10);
-const demoPaymentReference = `MVP-PAY-${demoRunCode}`;
-
-const initialGuest = {
-  guest_code: `WEB-GUEST-${demoRunCode}`,
-  first_name: "Demo",
-  last_name: "Guest",
-  email: "",
-  phone: "",
-  nationality: "AR",
-  notes: "Created from Reception MVP.",
+type DemoCodes = {
+  runCode: string;
+  shortCode: string;
+  guestCode: string;
+  roomNumber: string;
+  reservationCode: string;
+  paymentReference: string;
 };
 
-const initialRoom = {
-  room_number: `WEB-${demoShortCode}`,
-  floor: "1",
-  room_type: "Standard",
-  has_balcony: false,
-  has_jacuzzi: false,
-  notes: "",
-};
+type LastOutcome = {
+  title: string;
+  message: string;
+  details?: unknown;
+} | null;
 
-const initialReservation = {
-  reservation_code: `WEB-RES-${demoRunCode}`,
-  check_in_date: "2027-06-01",
-  check_out_date: "2027-06-05",
-  adults: "2",
-  children: "0",
-  notes: "Created from Reception MVP.",
-};
+class LocalValidationError extends Error {}
+
+function createDemoCodes(): DemoCodes {
+  const todayCode = new Date()
+    .toISOString()
+    .slice(0, 10)
+    .replace(/-/g, "");
+  const runCode = `${todayCode}-${Date.now()
+    .toString(36)
+    .toUpperCase()}`;
+  const shortCode = runCode.slice(-10);
+
+  return {
+    runCode,
+    shortCode,
+    guestCode: `WEB-GUEST-${runCode}`,
+    roomNumber: `WEB-${shortCode}`,
+    reservationCode: `WEB-RES-${runCode}`,
+    paymentReference: `MVP-PAY-${runCode}`,
+  };
+}
+
+function createGuest(codes: DemoCodes) {
+  return {
+    guest_code: codes.guestCode,
+    first_name: "Demo",
+    last_name: "Guest",
+    email: "",
+    phone: "",
+    nationality: "AR",
+    notes: "Created from Reception MVP.",
+  };
+}
+
+function createRoom(codes: DemoCodes) {
+  return {
+    room_number: codes.roomNumber,
+    floor: "1",
+    room_type: "Standard",
+    has_balcony: false,
+    has_jacuzzi: false,
+    notes: "",
+  };
+}
+
+function createReservation(codes: DemoCodes) {
+  return {
+    reservation_code: codes.reservationCode,
+    check_in_date: "2027-06-01",
+    check_out_date: "2027-06-05",
+    adults: "2",
+    children: "0",
+    notes: "Created from Reception MVP.",
+  };
+}
 
 function optionalText(value: string): string | null {
   const trimmed = value.trim();
   return trimmed === "" ? null : trimmed;
+}
+
+function parsePositiveInteger(value: string, label: string): number {
+  const trimmed = value.trim();
+  const parsedValue = Number(trimmed);
+
+  if (
+    trimmed === "" ||
+    !Number.isInteger(parsedValue) ||
+    parsedValue <= 0
+  ) {
+    throw new LocalValidationError(`${label} must be a positive integer.`);
+  }
+
+  return parsedValue;
+}
+
+function parseNonNegativeInteger(value: string, label: string): number {
+  const trimmed = value.trim();
+  const parsedValue = Number(trimmed);
+
+  if (
+    trimmed === "" ||
+    !Number.isInteger(parsedValue) ||
+    parsedValue < 0
+  ) {
+    throw new LocalValidationError(
+      `${label} must be zero or a positive integer.`,
+    );
+  }
+
+  return parsedValue;
+}
+
+function parseAmount(value: string, label: string): number {
+  const parsedAmount = parsePositiveInteger(value, label);
+
+  if (parsedAmount > 100_000_000) {
+    throw new LocalValidationError(`${label} is too large for a demo run.`);
+  }
+
+  return parsedAmount;
 }
 
 function optionalActorBody(actorUserId: string) {
@@ -94,39 +177,83 @@ function optionalActorBody(actorUserId: string) {
     return undefined;
   }
 
-  const parsedActorId = Number(trimmed);
-
-  if (!Number.isInteger(parsedActorId) || parsedActorId <= 0) {
-    throw new Error("Actor user ID must be a positive integer.");
-  }
-
-  return { actor_user_id: parsedActorId };
+  return { actor_user_id: parsePositiveInteger(trimmed, "Actor user ID") };
 }
 
-function ResultBlock({
-  title,
-  value,
-}: {
-  title: string;
-  value: unknown;
-}) {
+function requireKnownId(value: number | null, label: string): number {
   if (value === null) {
+    throw new LocalValidationError(`${label} is required first.`);
+  }
+
+  return value;
+}
+
+function getStepStatus(
+  isComplete: boolean,
+  isCurrent: boolean,
+): StepStatus {
+  if (isComplete) {
+    return "complete";
+  }
+
+  return isCurrent ? "current" : "pending";
+}
+
+function FlowGuide({
+  steps,
+}: {
+  steps: { label: string; status: StepStatus; detail: string }[];
+}) {
+  return (
+    <section className="content-panel mvp-flow-panel">
+      <h2>Manual test flow</h2>
+      <ol className="mvp-flow">
+        {steps.map((step) => (
+          <li className={`mvp-flow-item ${step.status}`} key={step.label}>
+            <span className="mvp-flow-marker" aria-hidden="true" />
+            <div>
+              <strong>{step.label}</strong>
+              <span>{step.detail}</span>
+            </div>
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
+
+function ResultBlock({ outcome }: { outcome: LastOutcome }) {
+  if (outcome === null) {
     return null;
   }
 
   return (
     <section className="content-panel mvp-result">
-      <h2>{title}</h2>
-      <pre>{JSON.stringify(value, null, 2)}</pre>
+      <h2>{outcome.title}</h2>
+      <p>{outcome.message}</p>
+      {outcome.details === undefined ? null : (
+        <details>
+          <summary>Raw response</summary>
+          <pre>{JSON.stringify(outcome.details, null, 2)}</pre>
+        </details>
+      )}
     </section>
   );
 }
 
+function FieldHint({ children }: { children: string }) {
+  return <p className="field-hint">{children}</p>;
+}
+
 export function ReceptionMvpPage() {
-  const [guestForm, setGuestForm] = useState(initialGuest);
-  const [roomForm, setRoomForm] = useState(initialRoom);
-  const [reservationForm, setReservationForm] =
-    useState(initialReservation);
+  const [demoCodes, setDemoCodes] = useState(() => createDemoCodes());
+  const [guestForm, setGuestForm] = useState(() =>
+    createGuest(demoCodes),
+  );
+  const [roomForm, setRoomForm] = useState(() => createRoom(demoCodes));
+  const [reservationForm, setReservationForm] = useState(() =>
+    createReservation(demoCodes),
+  );
   const [existingRoomId, setExistingRoomId] = useState("");
   const [reservationId, setReservationId] = useState("");
   const [billingAccountId, setBillingAccountId] = useState("");
@@ -137,35 +264,153 @@ export function ReceptionMvpPage() {
   const [roomId, setRoomId] = useState<number | null>(null);
   const [rooms, setRooms] = useState<Room[]>([]);
   const [summary, setSummary] = useState<ReceptionSummary | null>(null);
+  const [accountSnapshot, setAccountSnapshot] =
+    useState<BillingAccountDetail | null>(null);
   const [events, setEvents] = useState<AuditEvent[]>([]);
-  const [lastResult, setLastResult] = useState<unknown>(null);
+  const [lastOutcome, setLastOutcome] = useState<LastOutcome>(null);
   const [error, setError] = useState<string | null>(null);
   const [isBusy, setIsBusy] = useState(false);
+  const [chargeCreated, setChargeCreated] = useState(false);
+  const [paymentCreated, setPaymentCreated] = useState(false);
+  const [checkInDone, setCheckInDone] = useState(false);
+  const [checkOutDone, setCheckOutDone] = useState(false);
 
   async function runStep<T>(
     action: () => Promise<T>,
-    onSuccess?: (result: T) => void,
+    onSuccess: (result: T) => LastOutcome | void,
   ) {
     setIsBusy(true);
     setError(null);
 
     try {
       const result = await action();
-      setLastResult(result);
-      onSuccess?.(result);
+      const outcome = onSuccess(result);
+
+      if (outcome) {
+        setLastOutcome(outcome);
+      }
     } catch (apiError) {
-      setError(
-        apiError instanceof Error
-          ? apiError.message
-          : "Unexpected API error.",
-      );
+      if (apiError instanceof LocalValidationError) {
+        setError(`Validation: ${apiError.message}`);
+      } else {
+        setError(
+          apiError instanceof Error
+            ? `API error: ${apiError.message}`
+            : "API error: Unexpected response.",
+        );
+      }
     } finally {
       setIsBusy(false);
     }
   }
 
-  const activeReservationId = Number(reservationId);
-  const activeAccountId = Number(billingAccountId);
+  function regenerateDemoCodes() {
+    const nextCodes = createDemoCodes();
+
+    setDemoCodes(nextCodes);
+    setGuestForm(createGuest(nextCodes));
+    setRoomForm(createRoom(nextCodes));
+    setReservationForm(createReservation(nextCodes));
+    setExistingRoomId("");
+    setReservationId("");
+    setBillingAccountId("");
+    setSummary(null);
+    setAccountSnapshot(null);
+    setEvents([]);
+    setLastOutcome({
+      title: "Demo codes regenerated",
+      message:
+        "The form now uses fresh guest, room, reservation, and payment references.",
+      details: nextCodes,
+    });
+    setError(null);
+    setChargeCreated(false);
+    setPaymentCreated(false);
+    setCheckInDone(false);
+    setCheckOutDone(false);
+  }
+
+  const currentReservationId = reservationId.trim()
+    ? Number(reservationId)
+    : null;
+  const currentAccountId = billingAccountId.trim()
+    ? Number(billingAccountId)
+    : null;
+  const currentBalance =
+    accountSnapshot?.balance_cents ??
+    summary?.billing_account?.balance_cents ??
+    null;
+  const currentCurrency =
+    accountSnapshot?.currency ?? summary?.billing_account?.currency ?? "ARS";
+
+  const flowSteps = [
+    {
+      label: "Guest",
+      status: getStepStatus(guestId !== null, guestId === null),
+      detail:
+        guestId === null ? "Create a demo guest." : `guest_id ${guestId}`,
+    },
+    {
+      label: "Room",
+      status: getStepStatus(roomId !== null, guestId !== null),
+      detail: roomId === null ? "Create or choose a room." : `room_id ${roomId}`,
+    },
+    {
+      label: "Reservation",
+      status: getStepStatus(
+        reservationId.trim() !== "",
+        guestId !== null && roomId !== null,
+      ),
+      detail:
+        reservationId.trim() === ""
+          ? "Needs guest_id and room_id."
+          : `reservation_id ${reservationId}`,
+    },
+    {
+      label: "Billing account",
+      status: getStepStatus(
+        billingAccountId.trim() !== "",
+        reservationId.trim() !== "",
+      ),
+      detail:
+        billingAccountId.trim() === ""
+          ? "Needs reservation_id."
+          : `account_id ${billingAccountId}`,
+    },
+    {
+      label: "Charge",
+      status: getStepStatus(chargeCreated, billingAccountId.trim() !== ""),
+      detail: chargeCreated ? "Charge added." : "Needs account_id.",
+    },
+    {
+      label: "Payment",
+      status: getStepStatus(paymentCreated, billingAccountId.trim() !== ""),
+      detail: paymentCreated ? "Payment registered." : "Needs account_id.",
+    },
+    {
+      label: "Summary",
+      status: getStepStatus(summary !== null, reservationId.trim() !== ""),
+      detail: summary ? "Summary loaded." : "Load reservation summary.",
+    },
+    {
+      label: "Check-in",
+      status: getStepStatus(checkInDone, reservationId.trim() !== ""),
+      detail: checkInDone ? "Guest checked in." : "Needs reservation_id.",
+    },
+    {
+      label: "Check-out",
+      status: getStepStatus(checkOutDone, reservationId.trim() !== ""),
+      detail: checkOutDone ? "Guest checked out." : "Needs reservation_id.",
+    },
+    {
+      label: "Audit events",
+      status: getStepStatus(events.length > 0, reservationId.trim() !== ""),
+      detail:
+        events.length > 0
+          ? `${events.length} event(s) loaded.`
+          : "Load events after reception actions.",
+    },
+  ];
 
   return (
     <>
@@ -176,10 +421,20 @@ export function ReceptionMvpPage() {
 
       {error ? <div className="error-banner">{error}</div> : null}
 
+      <FlowGuide steps={flowSteps} />
+
       <section className="mvp-layout">
         <div className="mvp-steps">
           <section className="content-panel mvp-step">
-            <h2>1. Guest</h2>
+            <div className="panel-heading">
+              <div>
+                <h2>1. Guest</h2>
+                <p>Create the guest record used by the demo reservation.</p>
+              </div>
+              <span className="status-pill status-clean">
+                {guestId === null ? "Pending" : "Done"}
+              </span>
+            </div>
             <div className="form-grid">
               <label>
                 Guest code
@@ -251,7 +506,14 @@ export function ReceptionMvpPage() {
                         },
                       },
                     ),
-                  (result) => setGuestId(result.guest_id),
+                  (result) => {
+                    setGuestId(result.guest_id);
+                    return {
+                      title: "Guest created",
+                      message: `guest_id ${result.guest_id} is ready for the reservation.`,
+                      details: result,
+                    };
+                  },
                 )
               }
             >
@@ -260,7 +522,15 @@ export function ReceptionMvpPage() {
           </section>
 
           <section className="content-panel mvp-step">
-            <h2>2. Room</h2>
+            <div className="panel-heading">
+              <div>
+                <h2>2. Room</h2>
+                <p>Create a demo room or reuse one already loaded.</p>
+              </div>
+              <span className="status-pill status-clean">
+                {roomId === null ? "Pending" : "Done"}
+              </span>
+            </div>
             <div className="form-grid">
               <label>
                 Existing room
@@ -328,7 +598,13 @@ export function ReceptionMvpPage() {
                 onClick={() =>
                   runStep(
                     () => apiRequest<Room[]>(endpoints.rooms.list),
-                    setRooms,
+                    (result) => {
+                      setRooms(result);
+                      return {
+                        title: "Rooms loaded",
+                        message: `${result.length} room(s) available to choose from.`,
+                      };
+                    },
                   )
                 }
               >
@@ -339,21 +615,32 @@ export function ReceptionMvpPage() {
                 disabled={isBusy}
                 onClick={() =>
                   runStep(
-                    () =>
-                      apiRequest<{ room_id: number }>(
+                    () => {
+                      const floor = parsePositiveInteger(
+                        roomForm.floor,
+                        "Floor",
+                      );
+
+                      return apiRequest<{ room_id: number }>(
                         endpoints.rooms.create,
                         {
                           method: "POST",
                           body: {
                             ...roomForm,
-                            floor: Number(roomForm.floor),
+                            floor,
                             notes: optionalText(roomForm.notes),
                           },
                         },
-                      ),
+                      );
+                    },
                     (result) => {
                       setRoomId(result.room_id);
                       setExistingRoomId(String(result.room_id));
+                      return {
+                        title: "Room created",
+                        message: `room_id ${result.room_id} is ready for the reservation.`,
+                        details: result,
+                      };
                     },
                   )
                 }
@@ -364,7 +651,15 @@ export function ReceptionMvpPage() {
           </section>
 
           <section className="content-panel mvp-step">
-            <h2>3. Reservation</h2>
+            <div className="panel-heading">
+              <div>
+                <h2>3. Reservation</h2>
+                <p>Connect the guest and room before continuing.</p>
+              </div>
+              <span className="status-pill status-clean">
+                {reservationId.trim() === "" ? "Pending" : "Done"}
+              </span>
+            </div>
             <div className="form-grid">
               <label>
                 Reservation code
@@ -418,29 +713,52 @@ export function ReceptionMvpPage() {
                 />
               </label>
             </div>
+            <FieldHint>
+              Requires a guest_id and room_id. Current values are shown in
+              the sidebar.
+            </FieldHint>
             <button
               className="primary-button"
               disabled={isBusy || guestId === null || roomId === null}
               onClick={() =>
                 runStep(
-                  () =>
-                    apiRequest<{ reservation_id: number }>(
+                  () => {
+                    const activeGuestId = requireKnownId(
+                      guestId,
+                      "guest_id",
+                    );
+                    const activeRoomId = requireKnownId(roomId, "room_id");
+
+                    return apiRequest<{ reservation_id: number }>(
                       endpoints.reservations.create,
                       {
                         method: "POST",
                         body: {
                           ...reservationForm,
-                          guest_id: guestId,
-                          room_id: roomId,
+                          guest_id: activeGuestId,
+                          room_id: activeRoomId,
                           status: "confirmed",
-                          adults: Number(reservationForm.adults),
-                          children: Number(reservationForm.children),
+                          adults: parsePositiveInteger(
+                            reservationForm.adults,
+                            "Adults",
+                          ),
+                          children: parseNonNegativeInteger(
+                            reservationForm.children,
+                            "Children",
+                          ),
                           notes: optionalText(reservationForm.notes),
                         },
                       },
-                    ),
-                  (result) =>
-                    setReservationId(String(result.reservation_id)),
+                    );
+                  },
+                  (result) => {
+                    setReservationId(String(result.reservation_id));
+                    return {
+                      title: "Reservation created",
+                      message: `reservation_id ${result.reservation_id} is ready for billing and reception.`,
+                      details: result,
+                    };
+                  },
                 )
               }
             >
@@ -449,7 +767,15 @@ export function ReceptionMvpPage() {
           </section>
 
           <section className="content-panel mvp-step">
-            <h2>4. Billing</h2>
+            <div className="panel-heading">
+              <div>
+                <h2>4. Billing</h2>
+                <p>Create the account, add the charge, then register payment.</p>
+              </div>
+              <span className="status-pill status-clean">
+                {paymentCreated ? "Paid" : "Pending"}
+              </span>
+            </div>
             <div className="form-grid">
               <label>
                 Reservation ID
@@ -495,7 +821,7 @@ export function ReceptionMvpPage() {
             <div className="button-row">
               <button
                 className="secondary-button"
-                disabled={isBusy || !activeReservationId}
+                disabled={isBusy || reservationId.trim() === ""}
                 onClick={() =>
                   runStep(
                     () =>
@@ -504,15 +830,24 @@ export function ReceptionMvpPage() {
                         {
                           method: "POST",
                           body: {
-                            reservation_id: activeReservationId,
+                            reservation_id: parsePositiveInteger(
+                              reservationId,
+                              "reservation_id",
+                            ),
                             notes: "Created from Reception MVP.",
                           },
                         },
                       ),
-                    (result) =>
+                    (result) => {
                       setBillingAccountId(
                         String(result.billing_account_id),
-                      ),
+                      );
+                      return {
+                        title: "Billing account created",
+                        message: `account_id ${result.billing_account_id} is ready for charges and payments.`,
+                        details: result,
+                      };
+                    },
                   )
                 }
               >
@@ -520,17 +855,46 @@ export function ReceptionMvpPage() {
               </button>
               <button
                 className="secondary-button"
-                disabled={isBusy || !activeAccountId}
+                disabled={isBusy || billingAccountId.trim() === ""}
                 onClick={() =>
-                  runStep(() =>
-                    apiRequest(endpoints.billing.charges(activeAccountId), {
-                      method: "POST",
-                      body: {
-                        source_module: "rooms",
-                        description: "Accommodation package",
-                        amount_cents: Number(chargeAmount),
-                      },
-                    }),
+                  runStep(
+                    async () => {
+                      const accountId = parsePositiveInteger(
+                        billingAccountId,
+                        "billing_account_id",
+                      );
+
+                      await apiRequest(
+                        endpoints.billing.charges(accountId),
+                        {
+                          method: "POST",
+                          body: {
+                            source_module: "rooms",
+                            description: "Accommodation package",
+                            amount_cents: parseAmount(
+                              chargeAmount,
+                              "Charge amount",
+                            ),
+                          },
+                        },
+                      );
+
+                      return apiRequest<BillingAccountDetail>(
+                        endpoints.billing.account(accountId),
+                      );
+                    },
+                    (result) => {
+                      setChargeCreated(true);
+                      setAccountSnapshot(result);
+                      return {
+                        title: "Charge added",
+                        message: `Balance is now ${formatCurrencyFromCents(
+                          result.balance_cents,
+                          result.currency,
+                        )}.`,
+                        details: result,
+                      };
+                    },
                   )
                 }
               >
@@ -538,20 +902,46 @@ export function ReceptionMvpPage() {
               </button>
               <button
                 className="secondary-button"
-                disabled={isBusy || !activeAccountId}
+                disabled={isBusy || billingAccountId.trim() === ""}
                 onClick={() =>
-                  runStep(() =>
-                    apiRequest(
-                      endpoints.billing.payments(activeAccountId),
-                      {
-                        method: "POST",
-                        body: {
-                          payment_method: "card",
-                          amount_cents: Number(paymentAmount),
-                          reference: demoPaymentReference,
+                  runStep(
+                    async () => {
+                      const accountId = parsePositiveInteger(
+                        billingAccountId,
+                        "billing_account_id",
+                      );
+
+                      await apiRequest(
+                        endpoints.billing.payments(accountId),
+                        {
+                          method: "POST",
+                          body: {
+                            payment_method: "card",
+                            amount_cents: parseAmount(
+                              paymentAmount,
+                              "Payment amount",
+                            ),
+                            reference: demoCodes.paymentReference,
+                          },
                         },
-                      },
-                    ),
+                      );
+
+                      return apiRequest<BillingAccountDetail>(
+                        endpoints.billing.account(accountId),
+                      );
+                    },
+                    (result) => {
+                      setPaymentCreated(true);
+                      setAccountSnapshot(result);
+                      return {
+                        title: "Payment registered",
+                        message: `Balance is now ${formatCurrencyFromCents(
+                          result.balance_cents,
+                          result.currency,
+                        )}.`,
+                        details: result,
+                      };
+                    },
                   )
                 }
               >
@@ -561,7 +951,15 @@ export function ReceptionMvpPage() {
           </section>
 
           <section className="content-panel mvp-step">
-            <h2>5. Reception</h2>
+            <div className="panel-heading">
+              <div>
+                <h2>5. Reception</h2>
+                <p>Load summary, check in, check out, then inspect audit events.</p>
+              </div>
+              <span className="status-pill status-clean">
+                {checkOutDone ? "Checked out" : "Pending"}
+              </span>
+            </div>
             <div className="form-grid">
               <label>
                 Optional actor user ID
@@ -574,17 +972,33 @@ export function ReceptionMvpPage() {
                 />
               </label>
             </div>
+            <FieldHint>
+              Actor user ID is manual traceability only; it is not real
+              authentication.
+            </FieldHint>
             <div className="button-row">
               <button
                 className="secondary-button"
-                disabled={isBusy || !activeReservationId}
+                disabled={isBusy || reservationId.trim() === ""}
                 onClick={() =>
                   runStep(
                     () =>
                       apiRequest<ReceptionSummary>(
-                        endpoints.reception.summary(activeReservationId),
+                        endpoints.reception.summary(
+                          parsePositiveInteger(
+                            reservationId,
+                            "reservation_id",
+                          ),
+                        ),
                       ),
-                    setSummary,
+                    (result) => {
+                      setSummary(result);
+                      return {
+                        title: "Summary loaded",
+                        message: `${result.reservation.reservation_code} is ${result.reservation.status}.`,
+                        details: result,
+                      };
+                    },
                   )
                 }
               >
@@ -592,16 +1006,31 @@ export function ReceptionMvpPage() {
               </button>
               <button
                 className="primary-button"
-                disabled={isBusy || !activeReservationId}
+                disabled={isBusy || reservationId.trim() === ""}
                 onClick={() =>
-                  runStep(() =>
-                    apiRequest(
-                      endpoints.reception.checkIn(activeReservationId),
-                      {
-                        method: "POST",
-                        body: optionalActorBody(actorUserId),
-                      },
-                    ),
+                  runStep(
+                    () =>
+                      apiRequest<ApiRecord>(
+                        endpoints.reception.checkIn(
+                          parsePositiveInteger(
+                            reservationId,
+                            "reservation_id",
+                          ),
+                        ),
+                        {
+                          method: "POST",
+                          body: optionalActorBody(actorUserId),
+                        },
+                      ),
+                    (result) => {
+                      setCheckInDone(true);
+                      return {
+                        title: "Check-in completed",
+                        message:
+                          "Load summary and audit events to verify the reception transaction.",
+                        details: result,
+                      };
+                    },
                   )
                 }
               >
@@ -609,16 +1038,31 @@ export function ReceptionMvpPage() {
               </button>
               <button
                 className="primary-button"
-                disabled={isBusy || !activeReservationId}
+                disabled={isBusy || reservationId.trim() === ""}
                 onClick={() =>
-                  runStep(() =>
-                    apiRequest(
-                      endpoints.reception.checkOut(activeReservationId),
-                      {
-                        method: "POST",
-                        body: optionalActorBody(actorUserId),
-                      },
-                    ),
+                  runStep(
+                    () =>
+                      apiRequest<ApiRecord>(
+                        endpoints.reception.checkOut(
+                          parsePositiveInteger(
+                            reservationId,
+                            "reservation_id",
+                          ),
+                        ),
+                        {
+                          method: "POST",
+                          body: optionalActorBody(actorUserId),
+                        },
+                      ),
+                    (result) => {
+                      setCheckOutDone(true);
+                      return {
+                        title: "Check-out completed",
+                        message:
+                          "Load summary and audit events to verify final status and audit trail.",
+                        details: result,
+                      };
+                    },
                   )
                 }
               >
@@ -626,14 +1070,25 @@ export function ReceptionMvpPage() {
               </button>
               <button
                 className="secondary-button"
-                disabled={isBusy || !activeReservationId}
+                disabled={isBusy || reservationId.trim() === ""}
                 onClick={() =>
                   runStep(
                     () =>
                       apiRequest<AuditEvent[]>(
-                        endpoints.reception.events(activeReservationId),
+                        endpoints.reception.events(
+                          parsePositiveInteger(
+                            reservationId,
+                            "reservation_id",
+                          ),
+                        ),
                       ),
-                    setEvents,
+                    (result) => {
+                      setEvents(result);
+                      return {
+                        title: "Audit events loaded",
+                        message: `${result.length} audit event(s) found for this reservation.`,
+                      };
+                    },
                   )
                 }
               >
@@ -644,6 +1099,40 @@ export function ReceptionMvpPage() {
         </div>
 
         <aside className="mvp-sidebar">
+          <section className="content-panel mvp-summary">
+            <div className="panel-heading compact">
+              <div>
+                <h2>Demo codes</h2>
+                <p>Use fresh codes to avoid collisions during manual tests.</p>
+              </div>
+            </div>
+            <dl>
+              <div>
+                <dt>Guest</dt>
+                <dd>{demoCodes.guestCode}</dd>
+              </div>
+              <div>
+                <dt>Room</dt>
+                <dd>{demoCodes.roomNumber}</dd>
+              </div>
+              <div>
+                <dt>Reservation</dt>
+                <dd>{demoCodes.reservationCode}</dd>
+              </div>
+              <div>
+                <dt>Payment reference</dt>
+                <dd>{demoCodes.paymentReference}</dd>
+              </div>
+            </dl>
+            <button
+              className="secondary-button full-width-button"
+              disabled={isBusy}
+              onClick={regenerateDemoCodes}
+            >
+              Regenerate demo codes
+            </button>
+          </section>
+
           <section className="content-panel mvp-summary">
             <h2>Current IDs</h2>
             <dl>
@@ -657,11 +1146,22 @@ export function ReceptionMvpPage() {
               </div>
               <div>
                 <dt>Reservation</dt>
-                <dd>{reservationId || "-"}</dd>
+                <dd>{currentReservationId ?? "-"}</dd>
               </div>
               <div>
                 <dt>Billing account</dt>
-                <dd>{billingAccountId || "-"}</dd>
+                <dd>{currentAccountId ?? "-"}</dd>
+              </div>
+              <div>
+                <dt>Balance</dt>
+                <dd>
+                  {currentBalance === null
+                    ? "-"
+                    : formatCurrencyFromCents(
+                        currentBalance,
+                        currentCurrency,
+                      )}
+                </dd>
               </div>
             </dl>
           </section>
@@ -702,13 +1202,14 @@ export function ReceptionMvpPage() {
                   <li key={event.id}>
                     <strong>{event.event_type}</strong>
                     <span>Actor: {event.actor_user_id ?? "none"}</span>
+                    <span>{event.created_at}</span>
                   </li>
                 ))}
               </ol>
             )}
           </section>
 
-          <ResultBlock title="Last API result" value={lastResult} />
+          <ResultBlock outcome={lastOutcome} />
         </aside>
       </section>
     </>
