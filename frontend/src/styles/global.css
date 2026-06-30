@@ -214,6 +214,59 @@ button.housekeeping-table-row.selected {
   font-weight: 700;
 }
 
+.maintenance-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: 16px;
+  align-items: start;
+}
+
+.maintenance-detail {
+  display: grid;
+  gap: 16px;
+}
+
+.maintenance-toolbar {
+  grid-template-columns: minmax(220px, 1fr) repeat(3, 180px);
+}
+
+.maintenance-table {
+  display: grid;
+  overflow-x: auto;
+}
+
+.maintenance-table-row {
+  display: grid;
+  grid-template-columns:
+    56px 90px 70px 130px 120px 120px 140px 130px minmax(160px, 1fr);
+  gap: 10px;
+  align-items: center;
+  min-width: 1120px;
+  min-height: 48px;
+  border: 0;
+  border-bottom: 1px solid #edf0f3;
+  background: transparent;
+  color: #26313f;
+  padding: 0;
+  text-align: left;
+}
+
+button.maintenance-table-row {
+  cursor: pointer;
+}
+
+button.maintenance-table-row:hover,
+button.maintenance-table-row.selected {
+  background: #f7fbfa;
+}
+
+.maintenance-table-head {
+  min-height: 36px;
+  color: #607080;
+  font-size: 13px;
+  font-weight: 700;
+}
+
 .dashboard-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 320px;
@@ -1145,6 +1198,8 @@ button.reservations-table-row.selected {
   .dashboard-layout,
   .housekeeping-layout,
   .housekeeping-toolbar,
+  .maintenance-layout,
+  .maintenance-toolbar,
   .guests-layout,
   .guests-toolbar,
   .rooms-layout,

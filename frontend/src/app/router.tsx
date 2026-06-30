@@ -5,6 +5,7 @@ import { BillingPage } from "@/features/billing/pages/BillingPage";
 import { DashboardPage } from "@/features/dashboard/pages/DashboardPage";
 import { GuestsPage } from "@/features/guests/pages/GuestsPage";
 import { HousekeepingPage } from "@/features/housekeeping/pages/HousekeepingPage";
+import { MaintenancePage } from "@/features/maintenance/pages/MaintenancePage";
 import { ReceptionMvpPage } from "@/features/reception/pages/ReceptionMvpPage";
 import { ReservationsPage } from "@/features/reservations/pages/ReservationsPage";
 import { RoomsPage } from "@/features/rooms/pages/RoomsPage";
@@ -22,6 +23,7 @@ export const router: ReturnType<typeof createBrowserRouter> =
       { path: "reservations", element: <ReservationsPage /> },
       { path: "reception-mvp", element: <ReceptionMvpPage /> },
       { path: "housekeeping", element: <HousekeepingPage /> },
+      { path: "maintenance", element: <MaintenancePage /> },
       { path: "billing", element: <BillingPage /> },
       { path: "system", element: <SystemPage /> },
     ],

@@ -7,6 +7,7 @@ import {
   Sparkles,
   Settings,
   Users,
+  Wrench,
 } from "lucide-react";
 import { NavLink } from "react-router-dom";
 
@@ -17,6 +18,7 @@ const navigationItems = [
   { to: "/reservations", label: "Reservations", icon: CalendarDays },
   { to: "/reception-mvp", label: "Reception MVP", icon: ClipboardList },
   { to: "/housekeeping", label: "Housekeeping", icon: Sparkles },
+  { to: "/maintenance", label: "Maintenance", icon: Wrench },
   { to: "/billing", label: "Billing", icon: CreditCard },
   { to: "/system", label: "System", icon: Settings },
 ];

@@ -38,6 +38,9 @@ export const endpoints = {
   housekeeping: {
     dirtyRooms: "/housekeeping/dirty-rooms",
   },
+  maintenance: {
+    repairRooms: "/maintenance/repair-rooms",
+  },
   system: {
     modules: "/system/modules",
     status: "/system/status",
