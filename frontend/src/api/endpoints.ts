@@ -43,6 +43,6 @@ export const endpoints = {
   },
   system: {
     modules: "/system/modules",
-    status: "/system/status",
+    status: "/system/health",
   },
 } as const;

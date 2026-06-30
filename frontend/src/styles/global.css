@@ -940,6 +940,62 @@ button.audit-table-row.selected {
   white-space: pre-wrap;
 }
 
+.system-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 16px;
+  align-items: start;
+}
+
+.system-main {
+  min-width: 0;
+}
+
+.system-sidebar {
+  display: grid;
+  gap: 16px;
+}
+
+.system-module-table {
+  display: grid;
+  overflow-x: auto;
+}
+
+.system-module-row {
+  display: grid;
+  grid-template-columns: 130px 120px 80px 110px 80px minmax(260px, 1fr);
+  gap: 10px;
+  align-items: center;
+  min-width: 900px;
+  min-height: 48px;
+  border-bottom: 1px solid #edf0f3;
+  color: #26313f;
+}
+
+.system-module-head {
+  min-height: 36px;
+  color: #607080;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.system-signal-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.system-signal-value {
+  color: #18202c;
+  font-size: 24px;
+  font-weight: 700;
+}
+
+.system-quick-actions {
+  display: grid;
+  gap: 10px;
+}
+
 .detail-actions {
   display: flex;
   flex-wrap: wrap;
@@ -1310,6 +1366,8 @@ button.audit-table-row.selected {
   .billing-metrics,
   .audit-layout,
   .audit-toolbar,
+  .system-layout,
+  .system-signal-grid,
   .mvp-layout,
   .mvp-flow,
   .how-to-test-list,
