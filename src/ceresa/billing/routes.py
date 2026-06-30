@@ -134,6 +134,19 @@ def get_billing_status() -> dict:
     }
 
 
+@router.get("/accounts")
+def list_billing_accounts() -> list[dict]:
+    """
+    Returns billing accounts with compact operational balances.
+    """
+    accounts = repository.list_billing_accounts()
+
+    for account in accounts:
+        account["currency"] = HOTEL_CONFIG["currency"]
+
+    return accounts
+
+
 @router.post(
     "/accounts",
     response_model=BillingAccountCreated,
@@ -183,6 +196,28 @@ def get_billing_account(account_id: int) -> dict:
     Returns an account with its charges, payments and balance.
     """
     account = get_account_or_404(account_id)
+    account["currency"] = HOTEL_CONFIG["currency"]
+
+    return account
+
+
+@router.get("/reservations/{reservation_id}/account")
+def get_billing_account_by_reservation(
+    reservation_id: int,
+) -> dict:
+    """
+    Returns the billing account attached to one reservation.
+    """
+    account = repository.get_billing_account_by_reservation_id(
+        reservation_id,
+    )
+
+    if account is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Billing account not found for reservation.",
+        )
+
     account["currency"] = HOTEL_CONFIG["currency"]
 
     return account

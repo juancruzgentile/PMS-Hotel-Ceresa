@@ -79,6 +79,80 @@ def list_audit_events_by_reservation_id(
     return [dict(row) for row in rows]
 
 
+def list_audit_events(
+    *,
+    reservation_id: int | None = None,
+    room_id: int | None = None,
+    billing_account_id: int | None = None,
+    actor_user_id: int | None = None,
+    module: str | None = None,
+    event_type: str | None = None,
+    limit: int = 50,
+) -> list[dict[str, Any]]:
+    """
+    Lists audit events using optional read-only filters.
+    """
+    where_clauses = []
+    values: list[Any] = []
+
+    if reservation_id is not None:
+        where_clauses.append("reservation_id = ?")
+        values.append(reservation_id)
+
+    if room_id is not None:
+        where_clauses.append("room_id = ?")
+        values.append(room_id)
+
+    if billing_account_id is not None:
+        where_clauses.append("billing_account_id = ?")
+        values.append(billing_account_id)
+
+    if actor_user_id is not None:
+        where_clauses.append("actor_user_id = ?")
+        values.append(actor_user_id)
+
+    if module is not None:
+        where_clauses.append("module = ?")
+        values.append(module)
+
+    if event_type is not None:
+        where_clauses.append("event_type = ?")
+        values.append(event_type)
+
+    where_sql = ""
+    if where_clauses:
+        where_sql = "WHERE " + " AND ".join(where_clauses)
+
+    values.append(limit)
+
+    with get_connection() as connection:
+        rows = connection.execute(
+            f"""
+            SELECT
+                id,
+                module,
+                event_type,
+                entity_type,
+                entity_id,
+                reservation_id,
+                room_id,
+                billing_account_id,
+                actor_user_id,
+                before_state_json,
+                after_state_json,
+                metadata_json,
+                created_at
+            FROM audit_events
+            {where_sql}
+            ORDER BY id DESC
+            LIMIT ?
+            """,
+            tuple(values),
+        ).fetchall()
+
+    return [dict(row) for row in rows]
+
+
 def get_audit_event_by_id(event_id: int) -> dict[str, Any] | None:
     """
     Returns one audit event by ID.

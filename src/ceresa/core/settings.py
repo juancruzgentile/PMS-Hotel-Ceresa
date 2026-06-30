@@ -27,6 +27,9 @@ MODULE_DEFINITIONS = {
     "rooms": {
         "description": "Room management module.",
     },
+    "audit": {
+        "description": "Immutable operational audit trail module.",
+    },
     "guests": {
         "description": "Guests, guest profiles, stay data and hotel customer information module.",
     },
@@ -104,6 +107,7 @@ MODULE_DEFINITIONS = {
 
 DEFAULT_MODULES_CONFIG = {
     "rooms": True,
+    "audit": True,
     "guests": True,
     "reservations": True,
     "reception": True,

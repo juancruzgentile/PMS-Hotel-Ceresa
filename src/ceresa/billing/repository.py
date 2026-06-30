@@ -210,6 +210,68 @@ def create_billing_account(
     return account_id
 
 
+def list_billing_accounts() -> list[dict[str, Any]]:
+    """
+    Lists billing accounts with operational summary data.
+    """
+    with get_connection() as connection:
+        rows = connection.execute(
+            """
+            SELECT
+                billing_accounts.id AS billing_account_id,
+                billing_accounts.reservation_id,
+                reservations.reservation_code,
+                guests.first_name AS guest_first_name,
+                guests.last_name AS guest_last_name,
+                rooms.room_number,
+                billing_accounts.status,
+                billing_accounts.created_at,
+                billing_accounts.updated_at,
+                COALESCE(charges.total_charges_cents, 0)
+                    AS total_charges_cents,
+                COALESCE(payments.total_payments_cents, 0)
+                    AS total_payments_cents,
+                COALESCE(charges.total_charges_cents, 0)
+                    - COALESCE(payments.total_payments_cents, 0)
+                    AS balance_cents
+            FROM billing_accounts
+            INNER JOIN reservations
+                ON reservations.id = billing_accounts.reservation_id
+            INNER JOIN guests
+                ON guests.id = reservations.guest_id
+            INNER JOIN rooms
+                ON rooms.id = reservations.room_id
+            LEFT JOIN (
+                SELECT
+                    billing_account_id,
+                    SUM(amount_cents) AS total_charges_cents
+                FROM billing_charges
+                GROUP BY billing_account_id
+            ) AS charges
+                ON charges.billing_account_id = billing_accounts.id
+            LEFT JOIN (
+                SELECT
+                    billing_account_id,
+                    SUM(amount_cents) AS total_payments_cents
+                FROM billing_payments
+                GROUP BY billing_account_id
+            ) AS payments
+                ON payments.billing_account_id = billing_accounts.id
+            ORDER BY billing_accounts.id DESC
+            """
+        ).fetchall()
+
+    accounts = [dict(row) for row in rows]
+
+    for account in accounts:
+        account["guest_name"] = (
+            f"{account['guest_first_name']} "
+            f"{account['guest_last_name']}"
+        )
+
+    return accounts
+
+
 def create_charge(
     billing_account_id: int,
     charge_data: dict[str, Any],

@@ -77,6 +77,7 @@ def test_module_definitions_and_default_config_have_same_keys():
 def test_default_active_modules_preserve_current_effective_state():
     expected_active_modules = {
         "rooms",
+        "audit",
         "guests",
         "reservations",
         "reception",

@@ -203,6 +203,128 @@ def test_billing_account_calculates_balance(
     assert len(data["payments"]) == 1
 
 
+def test_list_billing_accounts_includes_created_account_and_balance(
+    client,
+    reset_test_data,
+):
+    reservation_id = create_reservation_for_billing(
+        client,
+        "L01",
+    )
+    account_response = client.post(
+        "/billing/accounts",
+        json={
+            "reservation_id": reservation_id,
+            "notes": None,
+        },
+    )
+    account_id = account_response.json()["billing_account_id"]
+
+    charge_response = client.post(
+        f"/billing/accounts/{account_id}/charges",
+        json={
+            "source_module": "rooms",
+            "description": "Accommodation",
+            "amount_cents": 12000,
+        },
+    )
+    payment_response = client.post(
+        f"/billing/accounts/{account_id}/payments",
+        json={
+            "payment_method": "cash",
+            "amount_cents": 5000,
+            "reference": None,
+        },
+    )
+
+    assert account_response.status_code == 201
+    assert charge_response.status_code == 201
+    assert payment_response.status_code == 201
+
+    response = client.get("/billing/accounts")
+
+    assert response.status_code == 200
+
+    accounts = response.json()
+    account = next(
+        item
+        for item in accounts
+        if item["billing_account_id"] == account_id
+    )
+
+    assert account["reservation_id"] == reservation_id
+    assert account["reservation_code"] == "TEST-BILL-RES-L01"
+    assert account["guest_name"] == "Billing Guest"
+    assert account["room_number"] == "TEST-BILL-ROOM-L01"
+    assert account["currency"] == "EUR"
+    assert account["total_charges_cents"] == 12000
+    assert account["total_payments_cents"] == 5000
+    assert account["balance_cents"] == 7000
+
+
+def test_get_billing_account_by_reservation_returns_existing_account(
+    client,
+    reset_test_data,
+):
+    reservation_id = create_reservation_for_billing(
+        client,
+        "RA1",
+    )
+    account_response = client.post(
+        "/billing/accounts",
+        json={
+            "reservation_id": reservation_id,
+            "notes": None,
+        },
+    )
+    account_id = account_response.json()["billing_account_id"]
+
+    charge_response = client.post(
+        f"/billing/accounts/{account_id}/charges",
+        json={
+            "source_module": "rooms",
+            "description": "Accommodation",
+            "amount_cents": 15000,
+        },
+    )
+
+    assert account_response.status_code == 201
+    assert charge_response.status_code == 201
+
+    response = client.get(
+        f"/billing/reservations/{reservation_id}/account"
+    )
+
+    assert response.status_code == 200
+
+    account = response.json()
+
+    assert account["id"] == account_id
+    assert account["reservation_id"] == reservation_id
+    assert account["charges_total_cents"] == 15000
+    assert account["payments_total_cents"] == 0
+    assert account["balance_cents"] == 15000
+    assert account["currency"] == "EUR"
+    assert len(account["charges"]) == 1
+    assert account["payments"] == []
+
+
+def test_get_billing_account_by_reservation_returns_404_without_account(
+    client,
+    reset_test_data,
+):
+    reservation_id = create_reservation_for_billing(
+        client,
+        "RA4",
+    )
+
+    response = client.get(
+        f"/billing/reservations/{reservation_id}/account"
+    )
+
+    assert response.status_code == 404
+
+
 def test_billing_account_requires_valid_reservation(
     client,
     reset_test_data,

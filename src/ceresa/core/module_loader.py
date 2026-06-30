@@ -8,6 +8,7 @@ from ceresa.core.settings import MODULES
 
 AVAILABLE_ROUTERS: dict[str, str] = {
     "rooms": "ceresa.rooms.routes:router",
+    "audit": "ceresa.audit.routes:router",
     "housekeeping": "ceresa.housekeeping.routes:router",
     "maintenance": "ceresa.maintenance.routes:router",
     "users": "ceresa.users.routes:router",
