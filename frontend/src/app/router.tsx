@@ -1,6 +1,7 @@
 import { createBrowserRouter } from "react-router-dom";
 
 import { AppLayout } from "./layouts/AppLayout";
+import { AuditPage } from "@/features/audit/pages/AuditPage";
 import { BillingPage } from "@/features/billing/pages/BillingPage";
 import { DashboardPage } from "@/features/dashboard/pages/DashboardPage";
 import { GuestsPage } from "@/features/guests/pages/GuestsPage";
@@ -25,6 +26,7 @@ export const router: ReturnType<typeof createBrowserRouter> =
       { path: "housekeeping", element: <HousekeepingPage /> },
       { path: "maintenance", element: <MaintenancePage /> },
       { path: "billing", element: <BillingPage /> },
+      { path: "audit", element: <AuditPage /> },
       { path: "system", element: <SystemPage /> },
     ],
   },

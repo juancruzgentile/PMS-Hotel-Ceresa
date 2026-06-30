@@ -3,6 +3,7 @@ import {
   CalendarDays,
   ClipboardList,
   CreditCard,
+  FileSearch,
   LayoutDashboard,
   Sparkles,
   Settings,
@@ -20,6 +21,7 @@ const navigationItems = [
   { to: "/housekeeping", label: "Housekeeping", icon: Sparkles },
   { to: "/maintenance", label: "Maintenance", icon: Wrench },
   { to: "/billing", label: "Billing", icon: CreditCard },
+  { to: "/audit", label: "Audit", icon: FileSearch },
   { to: "/system", label: "System", icon: Settings },
 ];
 
