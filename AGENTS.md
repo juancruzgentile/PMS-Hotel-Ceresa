@@ -97,6 +97,16 @@ On Windows, use `npm.cmd` to avoid PowerShell execution policy issues. Do not co
 10. Report risks.
 11. Do not commit or push without authorization.
 
+## AI persona routing
+
+- For complex tasks, consult `.ai-rules/orchestrator.md`.
+- For backend work, consult `.ai-rules/agent_backend.md`.
+- For data, SQLite, schema, or transactions, consult `.ai-rules/agent_database.md`.
+- For frontend work, consult `.ai-rules/agent_frontend.md` and `frontend/AGENTS.md`.
+- For users, audit trail, billing, permissions, or sensitive data, consult `.ai-rules/agent_security.md`.
+- Before closing a task, consult `.ai-rules/agent_qa.md` and `.ai-rules/agent_release.md`.
+- These rules complement `AGENTS.md`; they do not replace it.
+
 ## Internal responsibility model
 
 Codex should simulate these roles before and during each task.

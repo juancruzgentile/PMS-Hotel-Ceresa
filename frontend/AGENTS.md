@@ -3,6 +3,8 @@
 ## Scope
 
 - Applies to everything inside `frontend/`.
+- For frontend tasks, also consult `../.ai-rules/agent_frontend.md`.
+- If the task touches users, audit trail, billing, permissions, or future auth, consult `../.ai-rules/agent_security.md`.
 
 ## Stack
 
