@@ -54,6 +54,27 @@ function parsePositiveInteger(value: string, label: string): number {
   return parsedValue;
 }
 
+function parseOptionalPositiveInteger(
+  value: string,
+  label: string,
+): number | null {
+  if (value.trim() === "") {
+    return null;
+  }
+
+  return parsePositiveInteger(value, label);
+}
+
+function parseLimit(value: string): number {
+  const parsedLimit = parsePositiveInteger(value, "limit");
+
+  if (parsedLimit > 200) {
+    throw new LocalValidationError("limit must be 200 or less.");
+  }
+
+  return parsedLimit;
+}
+
 function formatJson(value: unknown): string {
   if (value === undefined || value === null) {
     return "{}";
@@ -91,8 +112,55 @@ function getSearchText(event: AuditEvent): string {
     .toLowerCase();
 }
 
+function buildAuditEventsUrl(params: {
+  reservationId: number | null;
+  roomId: number | null;
+  billingAccountId: number | null;
+  actorUserId: number | null;
+  module: string;
+  eventType: string;
+  limit: number;
+}): string {
+  const searchParams = new URLSearchParams();
+
+  if (params.reservationId !== null) {
+    searchParams.set("reservation_id", String(params.reservationId));
+  }
+
+  if (params.roomId !== null) {
+    searchParams.set("room_id", String(params.roomId));
+  }
+
+  if (params.billingAccountId !== null) {
+    searchParams.set(
+      "billing_account_id",
+      String(params.billingAccountId),
+    );
+  }
+
+  if (params.actorUserId !== null) {
+    searchParams.set("actor_user_id", String(params.actorUserId));
+  }
+
+  if (params.module.trim() !== "") {
+    searchParams.set("module", params.module.trim());
+  }
+
+  if (params.eventType.trim() !== "") {
+    searchParams.set("event_type", params.eventType.trim());
+  }
+
+  searchParams.set("limit", String(params.limit));
+
+  return `${endpoints.audit.events}?${searchParams.toString()}`;
+}
+
 export function AuditPage() {
   const [reservationId, setReservationId] = useState("");
+  const [roomId, setRoomId] = useState("");
+  const [billingAccountId, setBillingAccountId] = useState("");
+  const [actorUserId, setActorUserId] = useState("");
+  const [limit, setLimit] = useState("50");
   const [events, setEvents] = useState<AuditEvent[]>([]);
   const [selectedEvent, setSelectedEvent] = useState<AuditEvent | null>(
     null,
@@ -110,20 +178,42 @@ export function AuditPage() {
     setError(null);
 
     try {
-      const parsedReservationId = parsePositiveInteger(
+      const parsedReservationId = parseOptionalPositiveInteger(
         reservationId,
         "reservation_id",
       );
+      const parsedRoomId = parseOptionalPositiveInteger(
+        roomId,
+        "room_id",
+      );
+      const parsedBillingAccountId = parseOptionalPositiveInteger(
+        billingAccountId,
+        "billing_account_id",
+      );
+      const parsedActorUserId = parseOptionalPositiveInteger(
+        actorUserId,
+        "actor_user_id",
+      );
+      const parsedLimit = parseLimit(limit);
+
       const data = await apiRequest<AuditEvent[]>(
-        endpoints.reception.events(parsedReservationId),
+        buildAuditEventsUrl({
+          reservationId: parsedReservationId,
+          roomId: parsedRoomId,
+          billingAccountId: parsedBillingAccountId,
+          actorUserId: parsedActorUserId,
+          module: moduleFilter,
+          eventType: eventTypeFilter,
+          limit: parsedLimit,
+        }),
       );
 
       setEvents(data);
       setSelectedEvent(data[0] ?? null);
       setLastMessage(
-        `${data.length} audit event(s) loaded for reservation_id ${parsedReservationId}.`,
+        `${data.length} audit event(s) loaded from /audit/events.`,
       );
-      setLastOperation("Reservation audit events loaded.");
+      setLastOperation("Audit query completed.");
     } catch (loadError) {
       const prefix =
         loadError instanceof LocalValidationError
@@ -173,7 +263,7 @@ export function AuditPage() {
     <>
       <PageHeader
         title="Audit"
-        description="Inspect immutable reception audit events by reservation."
+        description="Inspect immutable audit events across operational modules."
       />
 
       {error ? <div className="error-banner">{error}</div> : null}
@@ -231,15 +321,15 @@ export function AuditPage() {
         <div className="content-panel">
           <div className="panel-heading">
             <div>
-              <h2>Reservation events</h2>
+              <h2>Audit events</h2>
               <p>
-                The current backend exposes audit events by reservation_id
-                through Reception.
+                Query immutable events from `/audit/events`. actor_user_id is
+                manual traceability only.
               </p>
             </div>
             <button
               className="secondary-button"
-              disabled={isLoading || reservationId.trim() === ""}
+              disabled={isLoading}
               onClick={() => void loadEvents()}
             >
               Load events
@@ -258,34 +348,76 @@ export function AuditPage() {
               />
             </label>
             <label>
+              room_id
+              <input
+                type="number"
+                min="1"
+                placeholder="Optional"
+                value={roomId}
+                onChange={(event) => setRoomId(event.target.value)}
+              />
+            </label>
+            <label>
+              billing_account_id
+              <input
+                type="number"
+                min="1"
+                placeholder="Optional"
+                value={billingAccountId}
+                onChange={(event) =>
+                  setBillingAccountId(event.target.value)
+                }
+              />
+            </label>
+            <label>
+              actor_user_id
+              <input
+                type="number"
+                min="1"
+                placeholder="Optional"
+                value={actorUserId}
+                onChange={(event) => setActorUserId(event.target.value)}
+              />
+            </label>
+            <label>
               Module
-              <select
+              <input
+                placeholder="Example: reception"
                 value={moduleFilter}
                 onChange={(event) => setModuleFilter(event.target.value)}
-              >
-                <option value="">All modules</option>
+                list="audit-module-options"
+              />
+              <datalist id="audit-module-options">
                 {moduleOptions.map((moduleName) => (
-                  <option key={moduleName} value={moduleName}>
-                    {moduleName}
-                  </option>
+                  <option key={moduleName} value={moduleName} />
                 ))}
-              </select>
+              </datalist>
             </label>
             <label>
               Event type
-              <select
+              <input
+                placeholder="Example: check_in_completed"
                 value={eventTypeFilter}
                 onChange={(event) =>
                   setEventTypeFilter(event.target.value)
                 }
-              >
-                <option value="">All event types</option>
+                list="audit-event-type-options"
+              />
+              <datalist id="audit-event-type-options">
                 {eventTypeOptions.map((eventType) => (
-                  <option key={eventType} value={eventType}>
-                    {eventType}
-                  </option>
+                  <option key={eventType} value={eventType} />
                 ))}
-              </select>
+              </datalist>
+            </label>
+            <label>
+              Limit
+              <input
+                type="number"
+                min="1"
+                max="200"
+                value={limit}
+                onChange={(event) => setLimit(event.target.value)}
+              />
             </label>
             <label>
               Search
@@ -302,7 +434,7 @@ export function AuditPage() {
           ) : events.length === 0 ? (
             <EmptyState
               title="No audit events loaded"
-              message="Enter a reservation_id from Reception or Reservations, then load events."
+              message="Load recent events or add filters to narrow the audit query."
             />
           ) : filteredEvents.length === 0 ? (
             <EmptyState
@@ -432,7 +564,7 @@ export function AuditPage() {
             <section className="content-panel audit-json-panel">
               <h2>Event state</h2>
               <details open>
-                <summary>before_state_json</summary>
+                <summary>before_state</summary>
                 <pre>
                   {formatJson(
                     selectedEvent.before_state ??
@@ -441,7 +573,7 @@ export function AuditPage() {
                 </pre>
               </details>
               <details open>
-                <summary>after_state_json</summary>
+                <summary>after_state</summary>
                 <pre>
                   {formatJson(
                     selectedEvent.after_state ??
@@ -450,7 +582,7 @@ export function AuditPage() {
                 </pre>
               </details>
               <details>
-                <summary>metadata_json</summary>
+                <summary>metadata</summary>
                 <pre>
                   {formatJson(
                     selectedEvent.metadata ?? selectedEvent.metadata_json,

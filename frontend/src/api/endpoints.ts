@@ -2,6 +2,8 @@ export const endpoints = {
   billing: {
     account: (accountId: number) => `/billing/accounts/${accountId}`,
     accounts: "/billing/accounts",
+    accountByReservation: (reservationId: number) =>
+      `/billing/reservations/${reservationId}/account`,
     charges: (accountId: number) =>
       `/billing/accounts/${accountId}/charges`,
     payments: (accountId: number) =>
@@ -40,6 +42,9 @@ export const endpoints = {
   },
   maintenance: {
     repairRooms: "/maintenance/repair-rooms",
+  },
+  audit: {
+    events: "/audit/events",
   },
   system: {
     modules: "/system/modules",

@@ -785,7 +785,10 @@ button.reservations-table-row.selected {
 
 .billing-toolbar {
   display: grid;
-  grid-template-columns: minmax(220px, 320px);
+  grid-template-columns:
+    minmax(180px, 260px) max-content minmax(180px, 260px)
+    max-content;
+  align-items: end;
   gap: 12px;
   margin-bottom: 16px;
 }
@@ -805,6 +808,10 @@ button.reservations-table-row.selected {
   background: #ffffff;
   color: #18202c;
   padding: 7px 10px;
+}
+
+.billing-toolbar .secondary-button {
+  min-height: 38px;
 }
 
 .billing-metrics {
@@ -841,6 +848,31 @@ button.reservations-table-row.selected {
   font-weight: 700;
 }
 
+.billing-account-table-row {
+  display: grid;
+  grid-template-columns:
+    86px 100px 150px 180px 90px 90px 130px 130px 130px 170px;
+  gap: 10px;
+  align-items: center;
+  min-width: 1260px;
+  min-height: 48px;
+  border: 0;
+  border-bottom: 1px solid #edf0f3;
+  background: transparent;
+  color: #26313f;
+  padding: 0;
+  text-align: left;
+}
+
+button.billing-account-table-row {
+  cursor: pointer;
+}
+
+button.billing-account-table-row:hover,
+button.billing-account-table-row.selected {
+  background: #f7fbfa;
+}
+
 .audit-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 380px;
@@ -855,7 +887,7 @@ button.reservations-table-row.selected {
 
 .audit-toolbar {
   display: grid;
-  grid-template-columns: 160px 170px 220px minmax(220px, 1fr);
+  grid-template-columns: repeat(4, minmax(150px, 1fr));
   gap: 12px;
   margin-bottom: 16px;
 }

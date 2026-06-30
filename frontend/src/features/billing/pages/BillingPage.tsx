@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { apiRequest } from "@/api/client";
@@ -43,6 +43,21 @@ type BillingAccount = {
   charges_total_cents: number;
   payments_total_cents: number;
   balance_cents: number;
+};
+
+type BillingAccountSummary = {
+  billing_account_id: number;
+  reservation_id: number;
+  reservation_code: string | null;
+  guest_name: string | null;
+  room_number: string | null;
+  status: string;
+  currency: string;
+  total_charges_cents: number;
+  total_payments_cents: number;
+  balance_cents: number;
+  created_at: string;
+  updated_at: string;
 };
 
 type ChargeForm = {
@@ -114,6 +129,8 @@ function getBalanceState(account: BillingAccount): {
 
 export function BillingPage() {
   const [accountId, setAccountId] = useState("");
+  const [reservationId, setReservationId] = useState("");
+  const [accounts, setAccounts] = useState<BillingAccountSummary[]>([]);
   const [account, setAccount] = useState<BillingAccount | null>(null);
   const [chargeForm, setChargeForm] = useState<ChargeForm>({
     source_module: "rooms",
@@ -125,11 +142,30 @@ export function BillingPage() {
     amount_cents: "",
     reference: "",
   });
+  const [isListLoading, setIsListLoading] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
   const [isMutating, setIsMutating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastMessage, setLastMessage] = useState<string | null>(null);
   const [lastOperation, setLastOperation] = useState<string | null>(null);
+
+  async function loadAccounts() {
+    setIsListLoading(true);
+    setError(null);
+
+    try {
+      const data = await apiRequest<BillingAccountSummary[]>(
+        endpoints.billing.accounts,
+      );
+
+      setAccounts(data);
+      setLastMessage(`${data.length} billing account(s) loaded.`);
+    } catch (loadError) {
+      setError(`API error: ${getErrorMessage(loadError)}`);
+    } finally {
+      setIsListLoading(false);
+    }
+  }
 
   async function loadAccount(nextAccountId = accountId) {
     setIsLoading(true);
@@ -146,6 +182,7 @@ export function BillingPage() {
 
       setAccount(data);
       setAccountId(String(data.id));
+      setReservationId(String(data.reservation_id));
       setLastMessage(`Billing account ${data.id} loaded.`);
     } catch (loadError) {
       const prefix =
@@ -157,6 +194,42 @@ export function BillingPage() {
       setIsLoading(false);
     }
   }
+
+  async function loadAccountByReservation() {
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const parsedReservationId = parsePositiveInteger(
+        reservationId,
+        "reservation_id",
+      );
+      const data = await apiRequest<BillingAccount>(
+        endpoints.billing.accountByReservation(parsedReservationId),
+      );
+
+      setAccount(data);
+      setAccountId(String(data.id));
+      setReservationId(String(data.reservation_id));
+      setLastMessage(
+        `Billing account ${data.id} loaded for reservation_id ${data.reservation_id}.`,
+      );
+    } catch (loadError) {
+      const prefix =
+        loadError instanceof LocalValidationError
+          ? "Validation"
+          : "API error";
+      setError(`${prefix}: ${getErrorMessage(loadError)}`);
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void loadAccounts();
+    // Initial page load only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function addCharge() {
     setIsMutating(true);
@@ -182,6 +255,7 @@ export function BillingPage() {
       });
 
       await loadAccount(String(parsedAccountId));
+      await loadAccounts();
       setLastOperation(
         `Charge added for ${formatCurrencyFromCents(
           amountCents,
@@ -227,6 +301,7 @@ export function BillingPage() {
       });
 
       await loadAccount(String(parsedAccountId));
+      await loadAccounts();
       setLastOperation(
         `Payment registered for ${formatCurrencyFromCents(
           amountCents,
@@ -251,7 +326,7 @@ export function BillingPage() {
 
   const balanceState = account ? getBalanceState(account) : null;
   const accountIsOpen = account?.status === "open";
-  const busy = isLoading || isMutating;
+  const busy = isListLoading || isLoading || isMutating;
 
   return (
     <>
@@ -275,16 +350,16 @@ export function BillingPage() {
               <div>
                 <h2>Account lookup</h2>
                 <p>
-                  Load an existing account by billing_account_id. A list
-                  endpoint is not available yet.
+                  Load accounts from Billing, or inspect one by account or
+                  reservation ID.
                 </p>
               </div>
               <button
                 className="secondary-button"
-                disabled={busy || accountId.trim() === ""}
-                onClick={() => void loadAccount()}
+                disabled={busy}
+                onClick={() => void loadAccounts()}
               >
-                Load account
+                Refresh list
               </button>
             </div>
 
@@ -299,7 +374,107 @@ export function BillingPage() {
                   onChange={(event) => setAccountId(event.target.value)}
                 />
               </label>
+              <button
+                className="secondary-button"
+                disabled={busy || accountId.trim() === ""}
+                onClick={() => void loadAccount()}
+              >
+                Load account
+              </button>
+              <label>
+                Reservation ID
+                <input
+                  type="number"
+                  min="1"
+                  placeholder="Example: 1"
+                  value={reservationId}
+                  onChange={(event) =>
+                    setReservationId(event.target.value)
+                  }
+                />
+              </label>
+              <button
+                className="secondary-button"
+                disabled={busy || reservationId.trim() === ""}
+                onClick={() => void loadAccountByReservation()}
+              >
+                Load by reservation
+              </button>
             </div>
+
+            <section className="billing-section">
+              <div className="panel-heading compact">
+                <div>
+                  <h2>Billing accounts</h2>
+                  <p>Most recent accounts from `/billing/accounts`.</p>
+                </div>
+              </div>
+
+              {isListLoading ? (
+                <p className="muted-text">Loading billing accounts...</p>
+              ) : accounts.length === 0 ? (
+                <EmptyState
+                  title="No billing accounts"
+                  message="Create a billing account from Reception MVP, then refresh this list."
+                />
+              ) : (
+                <div className="billing-table">
+                  <div className="billing-account-table-row billing-table-head">
+                    <span>Account</span>
+                    <span>Reservation</span>
+                    <span>Code</span>
+                    <span>Guest</span>
+                    <span>Room</span>
+                    <span>Status</span>
+                    <span>Charges</span>
+                    <span>Payments</span>
+                    <span>Balance</span>
+                    <span>Updated</span>
+                  </div>
+                  {accounts.map((summary) => (
+                    <button
+                      className={`billing-account-table-row ${
+                        account?.id === summary.billing_account_id
+                          ? "selected"
+                          : ""
+                      }`}
+                      key={summary.billing_account_id}
+                      onClick={() =>
+                        void loadAccount(
+                          String(summary.billing_account_id),
+                        )
+                      }
+                    >
+                      <span>{summary.billing_account_id}</span>
+                      <span>{summary.reservation_id}</span>
+                      <span>{summary.reservation_code ?? "-"}</span>
+                      <span>{summary.guest_name ?? "-"}</span>
+                      <span>{summary.room_number ?? "-"}</span>
+                      <span>{summary.status}</span>
+                      <span>
+                        {formatCurrencyFromCents(
+                          summary.total_charges_cents,
+                          summary.currency,
+                        )}
+                      </span>
+                      <span>
+                        {formatCurrencyFromCents(
+                          summary.total_payments_cents,
+                          summary.currency,
+                        )}
+                      </span>
+                      <span>
+                        {formatCurrencyFromCents(
+                          summary.balance_cents,
+                          summary.currency,
+                        )}
+                      </span>
+                      <span>{summary.updated_at}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </section>
 
             {isLoading ? (
               <p className="muted-text">Loading billing account...</p>
