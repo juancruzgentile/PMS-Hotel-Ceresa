@@ -668,6 +668,80 @@ button.reservations-table-row.selected {
   font-weight: 700;
 }
 
+.billing-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 16px;
+  align-items: start;
+}
+
+.billing-main {
+  min-width: 0;
+}
+
+.billing-detail {
+  display: grid;
+  gap: 16px;
+}
+
+.billing-toolbar {
+  display: grid;
+  grid-template-columns: minmax(220px, 320px);
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.billing-toolbar label {
+  display: grid;
+  gap: 6px;
+  color: #4d5a69;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.billing-toolbar input {
+  min-height: 38px;
+  border: 1px solid #d7dde4;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #18202c;
+  padding: 7px 10px;
+}
+
+.billing-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.billing-section {
+  margin-top: 18px;
+}
+
+.billing-table {
+  display: grid;
+  overflow-x: auto;
+}
+
+.billing-table-row {
+  display: grid;
+  grid-template-columns: 56px 120px minmax(190px, 1fr) 140px 170px;
+  gap: 10px;
+  align-items: center;
+  min-width: 760px;
+  min-height: 46px;
+  border-bottom: 1px solid #edf0f3;
+  color: #26313f;
+}
+
+.billing-table-head {
+  min-height: 36px;
+  color: #607080;
+  font-size: 13px;
+  font-weight: 700;
+}
+
 .detail-actions {
   display: flex;
   flex-wrap: wrap;
@@ -826,6 +900,10 @@ button.reservations-table-row.selected {
   background: #ffffff;
   color: #18202c;
   padding: 7px 10px;
+}
+
+.form-grid.single-column {
+  grid-template-columns: 1fr;
 }
 
 .button-row {
@@ -1026,6 +1104,9 @@ button.reservations-table-row.selected {
   .rooms-toolbar,
   .reservations-layout,
   .reservations-toolbar,
+  .billing-layout,
+  .billing-toolbar,
+  .billing-metrics,
   .mvp-layout,
   .mvp-flow,
   .how-to-test-list,
