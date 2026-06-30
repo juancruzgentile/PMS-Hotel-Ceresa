@@ -33,6 +33,10 @@ export const endpoints = {
     create: "/rooms",
     list: "/rooms",
     detail: (roomId: number) => `/rooms/${roomId}`,
+    status: (roomId: number) => `/rooms/${roomId}/status`,
+  },
+  housekeeping: {
+    dirtyRooms: "/housekeeping/dirty-rooms",
   },
   system: {
     modules: "/system/modules",

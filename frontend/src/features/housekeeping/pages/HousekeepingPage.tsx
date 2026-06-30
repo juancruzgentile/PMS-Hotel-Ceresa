@@ -1,280 +1,511 @@
+import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import {
   AlertTriangle,
   CheckCircle2,
   Clock3,
   ClipboardList,
-  PackageCheck,
   SprayCan,
-  UserCheck,
 } from "lucide-react";
 
+import { apiRequest } from "@/api/client";
+import { endpoints } from "@/api/endpoints";
+import { EmptyState } from "@/shared/components/EmptyState";
 import { PageHeader } from "@/shared/components/PageHeader";
 
-type HousekeepingTask = {
-  room: string;
-  floor: string;
-  status: "Dirty" | "In progress" | "Inspection" | "Clean";
-  priority: "High" | "Normal";
-  assignedTo: string;
-  nextStep: string;
-  roomType: string;
-  eta: string;
+type Room = {
+  id: number;
+  room_number: string;
+  floor: number;
+  room_type: string;
+  room_status: string;
+  cleaning_status: string;
+  maintenance_status: string;
+  has_balcony: boolean | number;
+  has_jacuzzi: boolean | number;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
 };
 
-const summaryItems = [
-  {
-    label: "Dirty rooms",
-    value: "12",
-    detail: "5 high priority",
-    icon: AlertTriangle,
-  },
-  {
-    label: "In progress",
-    value: "7",
-    detail: "3 attendants active",
-    icon: SprayCan,
-  },
-  {
-    label: "Waiting inspection",
-    value: "4",
-    detail: "Supervisor queue",
-    icon: ClipboardList,
-  },
-  {
-    label: "Ready today",
-    value: "28",
-    detail: "Clean and released",
-    icon: CheckCircle2,
-  },
-];
+type CleaningStatusFilter = "all" | "dirty" | "in_progress" | "clean";
 
-const tasks: HousekeepingTask[] = [
-  {
-    room: "104",
-    floor: "Floor 1",
-    status: "Dirty",
-    priority: "High",
-    assignedTo: "Marta Ruiz",
-    nextStep: "Checkout clean before 14:00",
-    roomType: "Double",
-    eta: "35 min",
-  },
-  {
-    room: "118",
-    floor: "Floor 1",
-    status: "In progress",
-    priority: "Normal",
-    assignedTo: "Sofia Conti",
-    nextStep: "Replace towels and minibar report",
-    roomType: "Suite",
-    eta: "20 min",
-  },
-  {
-    room: "206",
-    floor: "Floor 2",
-    status: "Inspection",
-    priority: "High",
-    assignedTo: "Lucas Meyer",
-    nextStep: "Supervisor release for arrival",
-    roomType: "Family",
-    eta: "10 min",
-  },
-  {
-    room: "312",
-    floor: "Floor 3",
-    status: "Dirty",
-    priority: "Normal",
-    assignedTo: "Unassigned",
-    nextStep: "Assign attendant",
-    roomType: "Single",
-    eta: "Unplanned",
-  },
-  {
-    room: "417",
-    floor: "Floor 4",
-    status: "Clean",
-    priority: "Normal",
-    assignedTo: "Nadia Silva",
-    nextStep: "Room ready",
-    roomType: "Double",
-    eta: "Done",
-  },
-];
+const cleaningStatuses = ["dirty", "in_progress", "clean"] as const;
 
-const attendantLoad = [
-  { name: "Marta Ruiz", rooms: 6, shift: "Morning", done: 3 },
-  { name: "Sofia Conti", rooms: 5, shift: "Morning", done: 2 },
-  { name: "Lucas Meyer", rooms: 4, shift: "Afternoon", done: 1 },
-  { name: "Nadia Silva", rooms: 5, shift: "Afternoon", done: 4 },
-];
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : "Unexpected API error.";
+}
 
-const inspectionQueue = [
-  { room: "206", note: "Arrival at 15:20" },
-  { room: "305", note: "VIP amenities placed" },
-  { room: "408", note: "Maintenance follow-up" },
-];
+function statusClass(status: string) {
+  return `status-pill status-${status.replace("_", "-")}`;
+}
 
-const supplies = [
-  { label: "Towels", value: "82%" },
-  { label: "Linen", value: "68%" },
-  { label: "Amenities", value: "74%" },
-];
+function isRoomReady(room: Room): boolean {
+  return (
+    room.room_status === "available" &&
+    room.cleaning_status === "clean" &&
+    room.maintenance_status === "ok"
+  );
+}
 
-function statusClass(status: HousekeepingTask["status"]) {
-  return `status-pill status-${status.toLowerCase().replace(" ", "-")}`;
+function getReadyLabel(room: Room): string {
+  if (isRoomReady(room)) {
+    return "Ready";
+  }
+
+  if (room.maintenance_status !== "ok") {
+    return "Maintenance";
+  }
+
+  if (room.cleaning_status !== "clean") {
+    return "Needs cleaning";
+  }
+
+  return "Not ready";
 }
 
 export function HousekeepingPage() {
+  const [rooms, setRooms] = useState<Room[]>([]);
+  const [dirtyRooms, setDirtyRooms] = useState<Room[]>([]);
+  const [selectedRoom, setSelectedRoom] = useState<Room | null>(null);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [cleaningFilter, setCleaningFilter] =
+    useState<CleaningStatusFilter>("all");
+  const [floorFilter, setFloorFilter] = useState("");
+  const [roomTypeFilter, setRoomTypeFilter] = useState("");
+  const [nextCleaningStatus, setNextCleaningStatus] = useState("clean");
+  const [isLoading, setIsLoading] = useState(true);
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [lastMessage, setLastMessage] = useState<string | null>(null);
+  const [lastOperation, setLastOperation] = useState<string | null>(null);
+
+  async function loadHousekeepingData() {
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const [allRooms, roomsNeedingCleaning] = await Promise.all([
+        apiRequest<Room[]>(endpoints.rooms.list),
+        apiRequest<Room[]>(endpoints.housekeeping.dirtyRooms),
+      ]);
+
+      setRooms(allRooms);
+      setDirtyRooms(roomsNeedingCleaning);
+      setLastMessage(
+        `${allRooms.length} room(s) loaded; ${roomsNeedingCleaning.length} dirty room(s).`,
+      );
+
+      if (selectedRoom) {
+        const refreshedSelection = allRooms.find(
+          (room) => room.id === selectedRoom.id,
+        );
+        setSelectedRoom(refreshedSelection ?? null);
+
+        if (refreshedSelection) {
+          setNextCleaningStatus(refreshedSelection.cleaning_status);
+        }
+      }
+    } catch (loadError) {
+      setError(`API error: ${getErrorMessage(loadError)}`);
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void loadHousekeepingData();
+    // Initial page load only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const floorOptions = useMemo(
+    () =>
+      Array.from(new Set(rooms.map((room) => String(room.floor)))).sort(
+        (left, right) => Number(left) - Number(right),
+      ),
+    [rooms],
+  );
+
+  const roomTypeOptions = useMemo(
+    () => Array.from(new Set(rooms.map((room) => room.room_type))).sort(),
+    [rooms],
+  );
+
+  const filteredRooms = useMemo(() => {
+    const normalizedSearch = searchTerm.trim().toLowerCase();
+
+    return rooms.filter((room) => {
+      const matchesCleaning =
+        cleaningFilter === "all" ||
+        room.cleaning_status === cleaningFilter;
+      const matchesFloor =
+        floorFilter === "" || String(room.floor) === floorFilter;
+      const matchesRoomType =
+        roomTypeFilter === "" || room.room_type === roomTypeFilter;
+      const matchesSearch =
+        normalizedSearch === "" ||
+        room.room_number.toLowerCase().includes(normalizedSearch);
+
+      return (
+        matchesCleaning &&
+        matchesFloor &&
+        matchesRoomType &&
+        matchesSearch
+      );
+    });
+  }, [rooms, searchTerm, cleaningFilter, floorFilter, roomTypeFilter]);
+
+  const inProgressCount = rooms.filter(
+    (room) => room.cleaning_status === "in_progress",
+  ).length;
+  const readyCount = rooms.filter(isRoomReady).length;
+  const notReadyCount = rooms.length - readyCount;
+
+  function selectRoom(room: Room) {
+    setSelectedRoom(room);
+    setNextCleaningStatus(room.cleaning_status);
+    setLastOperation(`Room ${room.room_number} selected.`);
+  }
+
+  async function updateCleaningStatus() {
+    if (!selectedRoom) {
+      setError("Select a room before updating cleaning status.");
+      return;
+    }
+
+    setIsUpdating(true);
+    setError(null);
+
+    try {
+      await apiRequest(endpoints.rooms.status(selectedRoom.id), {
+        method: "PATCH",
+        body: {
+          cleaning_status: nextCleaningStatus,
+        },
+      });
+
+      setLastOperation(
+        `Room ${selectedRoom.room_number} cleaning status updated to ${nextCleaningStatus}.`,
+      );
+      await loadHousekeepingData();
+    } catch (updateError) {
+      setError(`API error: ${getErrorMessage(updateError)}`);
+    } finally {
+      setIsUpdating(false);
+    }
+  }
+
+  const busy = isLoading || isUpdating;
+
   return (
     <>
       <PageHeader
         title="Housekeeping"
-        description="Cleaning board"
+        description="Operational cleaning board for room readiness."
       />
 
-      <section className="toolbar-panel" aria-label="Housekeeping filters">
-        <button className="toolbar-button active" type="button">
-          All rooms
-        </button>
-        <button className="toolbar-button" type="button">
-          Dirty
-        </button>
-        <button className="toolbar-button" type="button">
-          In progress
-        </button>
-        <button className="toolbar-button" type="button">
-          Inspection
-        </button>
-        <button className="toolbar-button" type="button">
-          Clean
-        </button>
-      </section>
+      {error ? <div className="error-banner">{error}</div> : null}
+      {lastMessage ? (
+        <div className="success-banner">{lastMessage}</div>
+      ) : null}
+      {lastOperation ? (
+        <div className="success-banner">{lastOperation}</div>
+      ) : null}
 
       <section className="metric-grid">
-        {summaryItems.map((item) => {
-          const Icon = item.icon;
-
-          return (
-            <article className="metric-card" key={item.label}>
-              <div className="metric-card-icon">
-                <Icon size={20} aria-hidden="true" />
-              </div>
-              <div>
-                <p className="metric-label">{item.label}</p>
-                <strong className="metric-value">{item.value}</strong>
-                <p className="metric-detail">{item.detail}</p>
-              </div>
-            </article>
-          );
-        })}
+        <article className="metric-card">
+          <div className="metric-card-icon">
+            <AlertTriangle size={20} aria-hidden="true" />
+          </div>
+          <div>
+            <p className="metric-label">Dirty rooms</p>
+            <strong className="metric-value">{dirtyRooms.length}</strong>
+            <p className="metric-detail">From Housekeeping endpoint</p>
+          </div>
+        </article>
+        <article className="metric-card">
+          <div className="metric-card-icon">
+            <SprayCan size={20} aria-hidden="true" />
+          </div>
+          <div>
+            <p className="metric-label">In progress</p>
+            <strong className="metric-value">{inProgressCount}</strong>
+            <p className="metric-detail">Cleaning underway</p>
+          </div>
+        </article>
+        <article className="metric-card">
+          <div className="metric-card-icon">
+            <CheckCircle2 size={20} aria-hidden="true" />
+          </div>
+          <div>
+            <p className="metric-label">Ready rooms</p>
+            <strong className="metric-value">{readyCount}</strong>
+            <p className="metric-detail">Available, clean and OK</p>
+          </div>
+        </article>
+        <article className="metric-card">
+          <div className="metric-card-icon">
+            <ClipboardList size={20} aria-hidden="true" />
+          </div>
+          <div>
+            <p className="metric-label">Not ready</p>
+            <strong className="metric-value">{notReadyCount}</strong>
+            <p className="metric-detail">Cleaning, occupied or repair</p>
+          </div>
+        </article>
       </section>
 
       <section className="housekeeping-layout">
         <div className="content-panel">
           <div className="panel-heading">
             <div>
-              <h2>Room Queue</h2>
-              <p>Current cleaning plan</p>
+              <h2>Room queue</h2>
+              <p>Filter rooms locally using the current Rooms API.</p>
             </div>
-            <span className="panel-time">
-              <Clock3 size={16} aria-hidden="true" />
-              11:30
-            </span>
+            <button
+              className="secondary-button"
+              disabled={busy}
+              onClick={() => void loadHousekeepingData()}
+            >
+              Refresh
+            </button>
           </div>
 
-          <div className="data-table">
-            <div className="data-table-row data-table-head">
-              <span>Room</span>
-              <span>Type</span>
-              <span>Status</span>
-              <span>Priority</span>
-              <span>Assigned</span>
-              <span>ETA</span>
-              <span>Next step</span>
-            </div>
-            {tasks.map((task) => (
-              <div className="data-table-row" key={task.room}>
-                <span>
-                  <strong>{task.room}</strong>
-                  <small>{task.floor}</small>
-                </span>
-                <span>{task.roomType}</span>
-                <span>
-                  <span className={statusClass(task.status)}>
-                    {task.status}
+          <div className="rooms-toolbar housekeeping-toolbar">
+            <label>
+              Room search
+              <input
+                placeholder="Room number"
+                value={searchTerm}
+                onChange={(event) => setSearchTerm(event.target.value)}
+              />
+            </label>
+            <label>
+              Cleaning
+              <select
+                value={cleaningFilter}
+                onChange={(event) =>
+                  setCleaningFilter(
+                    event.target.value as CleaningStatusFilter,
+                  )
+                }
+              >
+                <option value="all">All</option>
+                {cleaningStatuses.map((status) => (
+                  <option key={status} value={status}>
+                    {status}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Floor
+              <select
+                value={floorFilter}
+                onChange={(event) => setFloorFilter(event.target.value)}
+              >
+                <option value="">All floors</option>
+                {floorOptions.map((floor) => (
+                  <option key={floor} value={floor}>
+                    Floor {floor}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Room type
+              <select
+                value={roomTypeFilter}
+                onChange={(event) => setRoomTypeFilter(event.target.value)}
+              >
+                <option value="">All types</option>
+                {roomTypeOptions.map((roomType) => (
+                  <option key={roomType} value={roomType}>
+                    {roomType}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          {isLoading ? (
+            <p className="muted-text">Loading housekeeping rooms...</p>
+          ) : rooms.length === 0 ? (
+            <EmptyState
+              title="No rooms yet"
+              message="Create rooms first, then return to Housekeeping."
+            />
+          ) : filteredRooms.length === 0 ? (
+            <EmptyState
+              title="No matching rooms"
+              message="Adjust the filters or refresh the room list."
+            />
+          ) : (
+            <div className="housekeeping-table">
+              <div className="housekeeping-table-row housekeeping-table-head">
+                <span>ID</span>
+                <span>Room</span>
+                <span>Floor</span>
+                <span>Type</span>
+                <span>Room status</span>
+                <span>Cleaning</span>
+                <span>Maintenance</span>
+                <span>Readiness</span>
+                <span>Notes</span>
+              </div>
+              {filteredRooms.map((room) => (
+                <button
+                  className={`housekeeping-table-row ${
+                    selectedRoom?.id === room.id ? "selected" : ""
+                  }`}
+                  key={room.id}
+                  onClick={() => selectRoom(room)}
+                >
+                  <span>{room.id}</span>
+                  <span>
+                    <strong>{room.room_number}</strong>
                   </span>
-                </span>
-                <span>{task.priority}</span>
-                <span>{task.assignedTo}</span>
-                <span>{task.eta}</span>
-                <span>{task.nextStep}</span>
-              </div>
-            ))}
-          </div>
+                  <span>{room.floor}</span>
+                  <span>{room.room_type}</span>
+                  <span>{room.room_status}</span>
+                  <span>
+                    <span className={statusClass(room.cleaning_status)}>
+                      {room.cleaning_status}
+                    </span>
+                  </span>
+                  <span>{room.maintenance_status}</span>
+                  <span>{getReadyLabel(room)}</span>
+                  <span>{room.notes ?? "-"}</span>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
-        <aside className="content-panel side-panel">
-          <div className="panel-heading">
-            <div>
-              <h2>Attendants</h2>
-              <p>Assigned rooms</p>
-            </div>
-            <UserCheck size={20} aria-hidden="true" />
-          </div>
+        <aside className="housekeeping-detail">
+          <section className="content-panel mvp-summary">
+            <h2>Room detail</h2>
+            {selectedRoom ? (
+              <>
+                {isRoomReady(selectedRoom) ? (
+                  <div className="success-banner">
+                    Room appears ready for operation.
+                  </div>
+                ) : (
+                  <div className="warning-banner">
+                    Room is not ready. Review cleaning, occupancy or
+                    maintenance status.
+                  </div>
+                )}
 
-          <div className="attendant-list">
-            {attendantLoad.map((attendant) => (
-              <div className="attendant-item" key={attendant.name}>
-                <div>
-                  <strong>{attendant.name}</strong>
-                  <span>{attendant.shift}</span>
+                <dl>
+                  <div>
+                    <dt>room_id</dt>
+                    <dd>{selectedRoom.id}</dd>
+                  </div>
+                  <div>
+                    <dt>Room</dt>
+                    <dd>{selectedRoom.room_number}</dd>
+                  </div>
+                  <div>
+                    <dt>Floor</dt>
+                    <dd>{selectedRoom.floor}</dd>
+                  </div>
+                  <div>
+                    <dt>Type</dt>
+                    <dd>{selectedRoom.room_type}</dd>
+                  </div>
+                  <div>
+                    <dt>Room status</dt>
+                    <dd>{selectedRoom.room_status}</dd>
+                  </div>
+                  <div>
+                    <dt>Cleaning</dt>
+                    <dd>{selectedRoom.cleaning_status}</dd>
+                  </div>
+                  <div>
+                    <dt>Maintenance</dt>
+                    <dd>{selectedRoom.maintenance_status}</dd>
+                  </div>
+                </dl>
+
+                {selectedRoom.notes ? (
+                  <p className="detail-note">{selectedRoom.notes}</p>
+                ) : null}
+
+                <div className="detail-actions">
+                  <Link className="text-link" to="/rooms">
+                    Open Rooms
+                  </Link>
                 </div>
-                <strong>
-                  {attendant.done}/{attendant.rooms}
-                </strong>
-              </div>
-            ))}
-          </div>
-        </aside>
-      </section>
+              </>
+            ) : (
+              <p className="muted-text">
+                Select a room to inspect housekeeping readiness.
+              </p>
+            )}
+          </section>
 
-      <section className="housekeeping-layout lower-dashboard">
-        <div className="content-panel">
-          <div className="panel-heading">
-            <div>
-              <h2>Inspection Queue</h2>
-              <p>Rooms waiting for supervisor release</p>
+          <section className="content-panel mvp-summary">
+            <h2>Cleaning status</h2>
+            <p>
+              Updates use the existing room status endpoint and only change
+              cleaning_status.
+            </p>
+            <div className="form-grid single-column">
+              <label>
+                Next status
+                <select
+                  value={nextCleaningStatus}
+                  onChange={(event) =>
+                    setNextCleaningStatus(event.target.value)
+                  }
+                >
+                  {cleaningStatuses.map((status) => (
+                    <option key={status} value={status}>
+                      {status}
+                    </option>
+                  ))}
+                </select>
+              </label>
             </div>
-            <ClipboardList size={20} aria-hidden="true" />
-          </div>
+            <button
+              className="primary-button full-width-button"
+              disabled={
+                busy ||
+                !selectedRoom ||
+                selectedRoom.cleaning_status === nextCleaningStatus
+              }
+              onClick={() => void updateCleaningStatus()}
+            >
+              Update cleaning status
+            </button>
+          </section>
 
-          <div className="inspection-grid">
-            {inspectionQueue.map((item) => (
-              <article className="inspection-card" key={item.room}>
-                <strong>Room {item.room}</strong>
-                <p>{item.note}</p>
-              </article>
-            ))}
-          </div>
-        </div>
-
-        <aside className="content-panel side-panel">
-          <div className="panel-heading">
-            <div>
-              <h2>Supplies</h2>
-              <p>Floor stock</p>
-            </div>
-            <PackageCheck size={20} aria-hidden="true" />
-          </div>
-
-          <div className="snapshot-list">
-            {supplies.map((item) => (
-              <div key={item.label}>
-                <span>{item.label}</span>
-                <strong>{item.value}</strong>
+          <section className="content-panel mvp-summary">
+            <div className="panel-heading compact">
+              <div>
+                <h2>Dirty queue</h2>
+                <p>Rooms returned by `/housekeeping/dirty-rooms`.</p>
               </div>
-            ))}
-          </div>
+              <Clock3 size={18} aria-hidden="true" />
+            </div>
+            {dirtyRooms.length === 0 ? (
+              <p className="muted-text">No dirty rooms reported.</p>
+            ) : (
+              <ol className="audit-list">
+                {dirtyRooms.map((room) => (
+                  <li key={room.id}>
+                    <strong>Room {room.room_number}</strong>
+                    <span>
+                      Floor {room.floor} - {room.room_type}
+                    </span>
+                  </li>
+                ))}
+              </ol>
+            )}
+          </section>
         </aside>
       </section>
     </>
