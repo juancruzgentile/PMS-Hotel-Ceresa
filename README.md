@@ -1,5 +1,7 @@
 # CERESA PMS
 
+Guia practica para levantar y probar el MVP local: [docs/local-mvp.md](docs/local-mvp.md).
+
 **Sistema modular de gestión hotelera / Modular Hotel Management System**
 
 [Español](#español) · [English](#english)
