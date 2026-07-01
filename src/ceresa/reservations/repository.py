@@ -102,6 +102,25 @@ def room_exists(room_id: int) -> bool:
     return row is not None
 
 
+def room_exists_with_connection(
+    connection: Connection,
+    room_id: int,
+) -> bool:
+    """
+    Returns True when the room exists using an existing transaction.
+    """
+    row = connection.execute(
+        """
+        SELECT id
+        FROM rooms
+        WHERE id = ?
+        """,
+        (room_id,),
+    ).fetchone()
+
+    return row is not None
+
+
 def room_has_overlapping_reservation(
     room_id: int,
     check_in_date: str,
@@ -134,6 +153,97 @@ def room_has_overlapping_reservation(
         ).fetchone()
 
     return row is not None
+
+
+def room_has_overlapping_reservation_with_connection(
+    connection: Connection,
+    room_id: int,
+    check_in_date: str,
+    check_out_date: str,
+    exclude_reservation_id: int | None = None,
+) -> bool:
+    """
+    Checks active room overlaps inside an existing transaction.
+    """
+    values: list[Any] = [
+        room_id,
+        check_out_date,
+        check_in_date,
+    ]
+    exclusion_sql = ""
+
+    if exclude_reservation_id is not None:
+        exclusion_sql = "AND id != ?"
+        values.append(exclude_reservation_id)
+
+    row = connection.execute(
+        f"""
+        SELECT id
+        FROM reservations
+        WHERE room_id = ?
+          AND status IN (
+              'pending',
+              'confirmed',
+              'checked_in'
+          )
+          AND check_in_date < ?
+          AND check_out_date > ?
+          {exclusion_sql}
+        LIMIT 1
+        """,
+        tuple(values),
+    ).fetchone()
+
+    return row is not None
+
+
+def update_reservation_dates_with_connection(
+    connection: Connection,
+    reservation_id: int,
+    check_in_date: str,
+    check_out_date: str,
+) -> None:
+    """
+    Updates reservation dates inside an existing transaction.
+    """
+    connection.execute(
+        """
+        UPDATE reservations
+        SET
+            check_in_date = ?,
+            check_out_date = ?,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+        """,
+        (
+            check_in_date,
+            check_out_date,
+            reservation_id,
+        ),
+    )
+
+
+def update_reservation_room_with_connection(
+    connection: Connection,
+    reservation_id: int,
+    room_id: int,
+) -> None:
+    """
+    Updates reservation room inside an existing transaction.
+    """
+    connection.execute(
+        """
+        UPDATE reservations
+        SET
+            room_id = ?,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+        """,
+        (
+            room_id,
+            reservation_id,
+        ),
+    )
 
 
 def create_reservation(reservation_data: dict[str, Any]) -> int:
