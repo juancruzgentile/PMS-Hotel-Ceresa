@@ -26,10 +26,16 @@ export const endpoints = {
       `/reception/reservations/${reservationId}/summary`,
   },
   reservations: {
+    cancel: (reservationId: number) =>
+      `/reservations/${reservationId}/cancel`,
     create: "/reservations",
-    list: "/reservations",
+    dates: (reservationId: number) =>
+      `/reservations/${reservationId}/dates`,
     detail: (reservationId: number) =>
       `/reservations/${reservationId}`,
+    list: "/reservations",
+    room: (reservationId: number) =>
+      `/reservations/${reservationId}/room`,
   },
   rooms: {
     create: "/rooms",

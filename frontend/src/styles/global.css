@@ -767,6 +767,55 @@ button.reservations-table-row.selected {
   font-weight: 700;
 }
 
+.reservations-operations-panel {
+  margin-top: 16px;
+}
+
+.reservations-operation-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.reservations-operation-block {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  min-width: 0;
+  border: 1px solid #edf0f3;
+  border-radius: 8px;
+  padding: 14px;
+}
+
+.reservations-operation-block h3 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.reservations-operation-block label {
+  display: grid;
+  gap: 6px;
+  color: #4d5a69;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.reservations-operation-block input,
+.reservations-operation-block textarea {
+  width: 100%;
+  min-height: 38px;
+  border: 1px solid #d7dde4;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #18202c;
+  padding: 7px 10px;
+}
+
+.reservations-operation-block textarea {
+  min-height: 86px;
+  resize: vertical;
+}
+
 .billing-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 360px;
@@ -1402,6 +1451,7 @@ button.audit-table-row.selected {
   .system-signal-grid,
   .mvp-layout,
   .mvp-flow,
+  .reservations-operation-grid,
   .how-to-test-list,
   .form-grid {
     grid-template-columns: 1fr;
